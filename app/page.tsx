@@ -30,6 +30,10 @@ function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
 }
 
+function CartIcon() {
+  return <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
+}
+
 function Header({ count, onBag }: { count: number; onBag: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -44,7 +48,7 @@ function Header({ count, onBag }: { count: number; onBag: () => void }) {
         </nav>
         <div className="header-actions">
           <Link href="/products" aria-label="Search"><Icon>⌕</Icon></Link><Link href="/login" aria-label="Account"><Icon>♙</Icon></Link>
-          <Link className="bag-button" href="/cart" aria-label={`Open bag with ${count} items`}><Icon>♧</Icon><span className="bag-count">{count}</span></Link>
+          <Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link>
         </div>
       </header>
     </>
