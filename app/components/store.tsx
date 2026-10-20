@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, ReactNode, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 
 export type Product = {
   id: string;
@@ -25,8 +25,44 @@ export const products: Product[] = [
 
 export const money = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 
+const cartQuantityKey = "pebbles-cart-quantity";
+
+export function useCartCount() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const syncCount = () => setCount(Number(window.localStorage.getItem(cartQuantityKey) || 0));
+    syncCount();
+    window.addEventListener("storage", syncCount);
+    window.addEventListener("pebbles-cart-updated", syncCount);
+    return () => {
+      window.removeEventListener("storage", syncCount);
+      window.removeEventListener("pebbles-cart-updated", syncCount);
+    };
+  }, []);
+
+  return count;
+}
+
+export function addToCart(quantity = 1) {
+  const nextQuantity = Number(window.localStorage.getItem(cartQuantityKey) || 0) + quantity;
+  window.localStorage.setItem(cartQuantityKey, String(nextQuantity));
+  window.dispatchEvent(new Event("pebbles-cart-updated"));
+}
+
+export function setCartQuantity(quantity: number) {
+  if (quantity > 0) window.localStorage.setItem(cartQuantityKey, String(quantity));
+  else window.localStorage.removeItem(cartQuantityKey);
+  window.dispatchEvent(new Event("pebbles-cart-updated"));
+}
+
+export function CartIcon() {
+  return <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
+}
+
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const count = useCartCount();
   return (
     <>
       <div className="announcement">Free shipping on orders over ₹1,999 <span>✦</span> Easy returns, always</div>
@@ -36,7 +72,7 @@ export function SiteHeader() {
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
           <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link>
         </nav>
-        <div className="header-actions"><Link href="/products" aria-label="Search">⌕</Link><Link href="/login" aria-label="Account">♙</Link><Link className="bag-button" href="/cart">♧ <span>Bag (0)</span></Link></div>
+        <div className="header-actions"><Link href="/products" aria-label="Search">⌕</Link><Link href="/login" aria-label="Account">♙</Link><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
       </header>
     </>
   );
@@ -71,7 +107,7 @@ export function ProductListing() {
 
 export function ProductDetail({ product }: { product: Product }) {
   const [added, setAdded] = useState(false);
-  return <StoreShell><div className="detail-page"><div className="detail-image"><Image src={product.image} alt={product.name} fill sizes="(max-width: 800px) 100vw, 52vw" priority /></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={() => setAdded(true)}>{added ? "Added to bag ✓" : "Add to bag"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
+  return <StoreShell><div className="detail-page"><div className="detail-image"><Image src={product.image} alt={product.name} fill sizes="(max-width: 800px) 100vw, 52vw" priority /></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={() => { addToCart(); setAdded(true); }}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
 }
 
 export function SimpleForm({ title, button, children, note }: { title: ReactNode; button: string; children: ReactNode; note?: string }) {

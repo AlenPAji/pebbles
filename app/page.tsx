@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { addToCart, CartIcon, useCartCount } from "./components/store";
 
 type Product = {
   name: string;
@@ -28,10 +29,6 @@ const carouselSlides = [
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
-}
-
-function CartIcon() {
-  return <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
 }
 
 function Header({ count, onBag }: { count: number; onBag: () => void }) {
@@ -70,10 +67,10 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void }
 }
 
 export default function Home() {
-  const [bagCount, setBagCount] = useState(0);
   const [notice, setNotice] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
-  const addToBag = (name = "Item") => { setBagCount((count) => count + 1); setNotice(`${name} added to your bag`); window.setTimeout(() => setNotice(""), 2600); };
+  const cartCount = useCartCount();
+  const addToBag = (name = "Item") => { addToCart(); setNotice(`${name} added to your cart`); window.setTimeout(() => setNotice(""), 2600); };
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -84,7 +81,7 @@ export default function Home() {
 
   return (
     <main>
-      <Header count={bagCount} onBag={() => setNotice(bagCount ? `${bagCount} item${bagCount > 1 ? "s" : ""} in your bag` : "Your bag is empty")} />
+      <Header count={cartCount} onBag={() => setNotice(cartCount ? `${cartCount} item${cartCount > 1 ? "s" : ""} in your cart` : "Your cart is empty")} />
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       <section className="hero-carousel" aria-label="Featured collection">
         {carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}
