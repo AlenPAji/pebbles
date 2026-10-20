@@ -70,9 +70,9 @@ export function SiteHeader() {
         <button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open menu">☰</button>
         <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
-          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link>
+          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link><Link className="mobile-nav-account" href="/login">Account</Link>
         </nav>
-        <div className="header-actions"><Link href="/products" aria-label="Search">⌕</Link><Link href="/login" aria-label="Account">♙</Link><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
+        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search">⌕</Link><Link className="account-link" href="/login" aria-label="Account">♙</Link><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
       </header>
     </>
   );
