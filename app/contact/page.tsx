@@ -1,0 +1,2 @@
+import { Field, SimpleForm } from "../components/store";
+export default function ContactPage() { return <SimpleForm title={<>Let&apos;s talk <em>things.</em></>} button="Send message" note="We usually reply within one business day."><Field label="Your name" /><Field label="Email address" type="email" /><label className="field"><span>Message</span><textarea required rows={5} /></label></SimpleForm>; }

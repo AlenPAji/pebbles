@@ -1,0 +1,3 @@
+import Link from "next/link";
+import { StoreShell } from "../components/store";
+export default function OrdersPage() { return <StoreShell><div className="account-page"><p className="eyebrow">Your account</p><h1>My <em>orders.</em></h1><div className="order-list"><Link href="/orders/PB-1048"><span>#PB-1048</span><strong>Marigold Anarkali Kurta</strong><span>₹3,290</span><b className="status processing">Processing</b><span>→</span></Link><Link href="/orders/PB-1047"><span>#PB-1047</span><strong>Indigo Cotton Kurta</strong><span>₹2,490</span><b className="status shipped">Shipped</b><span>→</span></Link></div></div></StoreShell>; }

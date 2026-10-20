@@ -1,0 +1,2 @@
+import { AdminShell, AdminTable } from "../../components/store";
+export default function AdminOrdersPage() { return <AdminShell><div className="admin-content"><div className="admin-title"><div><p className="eyebrow">Manage</p><h1>Orders</h1></div><select className="admin-select"><option>All statuses</option><option>Processing</option><option>Shipped</option></select></div><AdminTable type="orders" /></div></AdminShell>; }
