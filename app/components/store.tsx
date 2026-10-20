@@ -32,7 +32,7 @@ export function SiteHeader() {
       <div className="announcement">Free shipping on orders over ₹1,999 <span>✦</span> Easy returns, always</div>
       <header className="site-header">
         <button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open menu">☰</button>
-        <Link href="/" className="wordmark"><Image src="/images/pebbles-classic-black.svg" alt="Pebbles" width={150} height={53} priority /></Link>
+        <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
           <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link>
         </nav>
@@ -43,7 +43,7 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
-  return <footer><div className="footer-top"><Image src="/images/pebbles-classic-black.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><Link href="/profile">Account</Link></div></div></footer>;
+  return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><Link href="/profile">Account</Link></div></div></footer>;
 }
 
 export function StoreShell({ children }: { children: ReactNode }) {
@@ -85,7 +85,7 @@ export function Field({ label, type = "text", placeholder }: { label: string; ty
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  return <div className="admin-layout"><aside className="admin-sidebar"><Link href="/admin" className="admin-brand">PEBBLES<span>STUDIO</span></Link><nav><p>Overview</p><Link href="/admin">Dashboard</Link><p>Manage</p><Link href="/admin/products">Products</Link><Link href="/admin/categories">Categories</Link><Link href="/admin/orders">Orders</Link><Link href="/admin/customers">Customers</Link></nav><Link href="/" className="back-store">← View storefront</Link></aside><section className="admin-main"><header className="admin-header"><span>Tuesday, 20 October 2026</span><Link href="/admin/login">Admin account ↗</Link></header>{children}</section></div>;
+  return <div className="admin-layout"><aside className="admin-sidebar"><Link href="/admin" className="admin-brand"><Image src="/images/pebbles-pebbles-wordmark-white-transparent.svg" alt="Pebbles Studio" width={150} height={53} /></Link><nav><p>Overview</p><Link href="/admin">Dashboard</Link><p>Manage</p><Link href="/admin/products">Products</Link><Link href="/admin/categories">Categories</Link><Link href="/admin/orders">Orders</Link><Link href="/admin/customers">Customers</Link></nav><Link href="/" className="back-store">← View storefront</Link></aside><section className="admin-main"><header className="admin-header"><span>Tuesday, 20 October 2026</span><Link href="/admin/login">Admin account ↗</Link></header>{children}</section></div>;
 }
 
 export function AdminTable({ type }: { type: "products" | "orders" | "customers" }) {
