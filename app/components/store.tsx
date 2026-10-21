@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { useAuth, useClerk } from "@clerk/nextjs";
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 
 export type Product = {
   id: string;
@@ -60,6 +61,48 @@ export function CartIcon() {
   return <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
 }
 
+export function useRequireAuth() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { redirectToSignIn } = useClerk();
+
+  return useCallback(async () => {
+    if (!isLoaded) return false;
+    if (isSignedIn) return true;
+
+    await redirectToSignIn({ redirectUrl: window.location.href });
+    return false;
+  }, [isLoaded, isSignedIn, redirectToSignIn]);
+}
+
+export function AccountLink({ className, children = "Account", "aria-label": ariaLabel }: { className?: string; children?: ReactNode; "aria-label"?: string }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const requireAuth = useRequireAuth();
+
+  const openAccount = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+
+    if (!(await requireAuth())) return;
+
+    try {
+      const response = await fetch("/api/profile");
+      if (!response.ok) throw new Error(`Profile lookup failed with status ${response.status}`);
+      const profile = await response.json() as { role?: string };
+      window.location.href = profile.role === "vendor" ? "/admin" : "/profile";
+    } catch (error) {
+      console.error("Unable to resolve the signed-in account destination.", error);
+      window.location.href = "/profile";
+    }
+  };
+
+  return <Link className={className} href={isLoaded && isSignedIn ? "/profile" : "/login"} onClick={openAccount} aria-label={ariaLabel}>{children}</Link>;
+}
+
+export function SignOutButton() {
+  const { signOut } = useClerk();
+
+  return <button className="button dark-button" type="button" onClick={() => void signOut({ redirectUrl: "/" })}>Sign out <span>↗</span></button>;
+}
+
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const count = useCartCount();
@@ -70,16 +113,16 @@ export function SiteHeader() {
         <button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open menu">☰</button>
         <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
-          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link><Link className="mobile-nav-account" href="/login">Account</Link>
+          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/#story">Our story</Link><Link href="/contact">Contact</Link><AccountLink className="mobile-nav-account" />
         </nav>
-        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search">⌕</Link><Link className="account-link" href="/login" aria-label="Account">♙</Link><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
+        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search">⌕</Link><AccountLink className="account-link" aria-label="Account">♙</AccountLink><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
       </header>
     </>
   );
 }
 
 export function SiteFooter() {
-  return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><Link href="/profile">Account</Link></div></div></footer>;
+  return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><AccountLink /></div></div></footer>;
 }
 
 export function StoreShell({ children }: { children: ReactNode }) {
@@ -107,7 +150,13 @@ export function ProductListing() {
 
 export function ProductDetail({ product }: { product: Product }) {
   const [added, setAdded] = useState(false);
-  return <StoreShell><div className="detail-page"><div className="detail-image"><Image src={product.image} alt={product.name} fill sizes="(max-width: 800px) 100vw, 52vw" priority /></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={() => { addToCart(); setAdded(true); }}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
+  const requireAuth = useRequireAuth();
+  const addProductToCart = async () => {
+    if (!(await requireAuth())) return;
+    addToCart();
+    setAdded(true);
+  };
+  return <StoreShell><div className="detail-page"><div className="detail-image"><Image src={product.image} alt={product.name} fill sizes="(max-width: 800px) 100vw, 52vw" priority /></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={addProductToCart}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
 }
 
 export function SimpleForm({ title, button, children, note }: { title: ReactNode; button: string; children: ReactNode; note?: string }) {
@@ -116,8 +165,8 @@ export function SimpleForm({ title, button, children, note }: { title: ReactNode
   return <StoreShell><div className="form-page"><p className="eyebrow">Pebbles account</p><h1>{submitted ? "You're all set." : title}</h1>{submitted ? <p className="form-success">Thanks. We&apos;ve received your details.</p> : <form onSubmit={submit}>{children}<button className="button dark-button" type="submit">{button} <span>↗</span></button></form>}{note && <p className="form-note">{note}</p>}</div></StoreShell>;
 }
 
-export function Field({ label, type = "text", placeholder }: { label: string; type?: string; placeholder?: string }) {
-  return <label className="field"><span>{label}</span><input type={type} placeholder={placeholder} required /></label>;
+export function Field({ label, name, type = "text", placeholder, defaultValue }: { label: string; name?: string; type?: string; placeholder?: string; defaultValue?: string }) {
+  return <label className="field"><span>{label}</span><input name={name} type={type} placeholder={placeholder} defaultValue={defaultValue} required /></label>;
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -129,6 +178,60 @@ export function AdminTable({ type }: { type: "products" | "orders" | "customers"
   return <div className="admin-table-wrap"><table><thead><tr>{(type === "products" ? ["Product", "Category", "Price", "Status"] : type === "orders" ? ["Order", "Customer", "Total", "Status"] : ["Customer", "Email", "Orders", "Spent"]).map((heading) => <th key={heading}>{heading}</th>)}<th>Action</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((cell) => <td key={cell}>{cell}</td>)}<td><button className="table-action">View →</button></td></tr>)}</tbody></table></div>;
 }
 
-export function ProductForm({ title, button }: { title: string; button: string }) {
-  return <div className="admin-content narrow-admin"><p className="eyebrow">Products</p><h1>{title}</h1><form className="admin-form"><Field label="Product name" /><div className="field-row"><Field label="Category" /><Field label="Price (₹)" /></div><label className="field"><span>Description</span><textarea rows={5} /></label><label className="upload-box">＋<span>Upload product images</span><small>PNG, JPG up to 5MB</small><input type="file" /></label><button className="admin-button" type="submit">{button} →</button></form></div>;
+type AdminProduct = {
+  id: string;
+  sku: string;
+  name: string;
+  description: string;
+  category: string | null;
+  price: string;
+  stockQuantity: number;
+  images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
+};
+
+export function ProductAdminTable() {
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/products").then(async (response) => {
+      if (!response.ok) throw new Error("Unable to load products");
+      setProducts(await response.json());
+    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Unable to load products"));
+  }, []);
+
+  const remove = async (id: string) => {
+    if (!window.confirm("Delete this product?")) return;
+    const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError("Unable to delete product");
+      return;
+    }
+    setProducts((current) => current.filter((product) => product.id !== id));
+  };
+
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}<table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td>{product.name}</td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.stockQuantity}</td><td><Link className="table-action" href={`/admin/products/${product.id}/edit`}>Edit →</Link><button className="table-action" onClick={() => void remove(product.id)}>Delete</button></td></tr>)}</tbody></table>{!products.length && !error && <p className="empty-state">No products yet.</p>}</div>;
+}
+
+export function ProductForm({ title, button, product }: { title: string; button: string; product?: AdminProduct }) {
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    const response = await fetch(product ? `/api/admin/products/${product.id}` : "/api/admin/products", {
+      method: product ? "PATCH" : "POST",
+      body: new FormData(event.currentTarget)
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Unable to save product");
+      setSaving(false);
+      return;
+    }
+    window.location.href = "/admin/products";
+  };
+
+  return <div className="admin-content narrow-admin"><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><Field name="category" label="Category" defaultValue={product?.category ?? ""} /><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><Field name="stockQuantity" label="Stock quantity" type="number" defaultValue={product ? String(product.stockQuantity) : "0"} /><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label><label className="upload-box">＋<span>Upload product images</span><small>PNG, JPG up to 5MB; order follows selection</small><input name="images" type="file" accept="image/*" multiple /></label><button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>;
 }

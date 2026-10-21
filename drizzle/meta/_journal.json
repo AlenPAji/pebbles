@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792611553988,
+      "tag": "0000_spotty_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792611597570,
+      "tag": "0001_groovy_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792612590078,
+      "tag": "0002_stormy_colossus",
+      "breakpoints": true
+    }
+  ]
+}

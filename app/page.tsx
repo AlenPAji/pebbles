@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { addToCart, CartIcon, useCartCount } from "./components/store";
+import { AccountLink, addToCart, CartIcon, useCartCount, useRequireAuth } from "./components/store";
 
 type Product = {
   name: string;
@@ -41,10 +41,10 @@ function Header({ count, onBag }: { count: number; onBag: () => void }) {
         <button className="mobile-menu" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen}><Icon>{menuOpen ? "×" : "☰"}</Icon></button>
         <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`} aria-label="Primary navigation">
-          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="#story">Our story</Link><Link href="#journal">Journal</Link><Link className="mobile-nav-account" href="/login">Account</Link>
+          <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="#story">Our story</Link><Link href="#journal">Journal</Link><AccountLink className="mobile-nav-account" />
         </nav>
         <div className="header-actions">
-          <Link className="search-link" href="/products" aria-label="Search"><Icon>⌕</Icon></Link><Link className="account-link" href="/login" aria-label="Account"><Icon>♙</Icon></Link>
+          <Link className="search-link" href="/products" aria-label="Search"><Icon>⌕</Icon></Link><AccountLink className="account-link" aria-label="Account"><Icon>♙</Icon></AccountLink>
           <Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link>
         </div>
       </header>
@@ -70,7 +70,13 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
   const cartCount = useCartCount();
-  const addToBag = (name = "Item") => { addToCart(); setNotice(`${name} added to your cart`); window.setTimeout(() => setNotice(""), 2600); };
+  const requireAuth = useRequireAuth();
+  const addToBag = async (name = "Item") => {
+    if (!(await requireAuth())) return;
+    addToCart();
+    setNotice(`${name} added to your cart`);
+    window.setTimeout(() => setNotice(""), 2600);
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -90,7 +96,7 @@ export default function Home() {
       <section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=1100&q=85" alt="Kurtas collection" fill sizes="50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=900&q=85" alt="Sarees collection" fill sizes="25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=900&q=85" alt="Tops collection" fill sizes="25vw" /><span>Tops</span></Link></div></section>
       <section className="manifesto"><p className="eyebrow">The Pebbles promise</p><h2>Less, but <em>better.</em></h2><div className="promise-grid"><div><span>01</span><h3>Made to last</h3><p>Thoughtful materials and quiet details that get better with time.</p></div><div><span>02</span><h3>Mindful by default</h3><p>Small batches, responsible choices and no unnecessary extras.</p></div><div><span>03</span><h3>For real life</h3><p>Useful, tactile and made for the beautiful mess of everyday.</p></div></div></section>
       <section className="newsletter" id="journal"><div><p className="eyebrow">Stay in the loop</p><h2>Good things,<br /><em>occasionally.</em></h2></div><div><p>Notes on making, living and the things we love. No noise, just a little inspiration in your inbox.</p><form onSubmit={(event) => { event.preventDefault(); setNotice("Thanks for joining Pebbles"); }}><input type="email" placeholder="Your email address" aria-label="Your email address" required /><button type="submit">Subscribe <span>↗</span></button></form></div></section>
-      <footer><div className="footer-top"><Link href="/"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /></Link><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><Link href="/profile">Account</Link><Link href="/cart">Cart</Link></div></div></footer>
+      <footer><div className="footer-top"><Link href="/"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /></Link><p>Small joys, thoughtfully made.</p><div className="socials"><a href="#instagram">Instagram</a><a href="#pinterest">Pinterest</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Studio</span><span>Made with intention in India</span><div><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><AccountLink /> <Link href="/cart">Cart</Link></div></div></footer>
     </main>
   );
 }
