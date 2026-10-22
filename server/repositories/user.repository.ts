@@ -12,66 +12,64 @@ export type UserProfileInput = {
 };
 
 export async function upsertUserProfile(input: UserProfileInput) {
-  return db.transaction(async (transaction) => {
-    const [existingByExternalId] = await transaction
+  const [existingByExternalId] = await db
+    .select()
+    .from(users)
+    .where(eq(users.externalUserId, input.externalUserId))
+    .limit(1);
+
+  if (existingByExternalId) {
+    const [user] = await db
+      .update(users)
+      .set({
+        name: input.name,
+        email: input.email,
+        deletedAt: null,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, existingByExternalId.id))
+      .returning();
+    return user;
+  }
+
+  if (input.email) {
+    const [existingByEmail] = await db
       .select()
       .from(users)
-      .where(eq(users.externalUserId, input.externalUserId))
+      .where(eq(users.email, input.email))
       .limit(1);
 
-    if (existingByExternalId) {
-      const [user] = await transaction
+    if (existingByEmail) {
+      const [user] = await db
         .update(users)
         .set({
+          externalUserId: input.externalUserId,
           name: input.name,
           email: input.email,
           deletedAt: null,
           updatedAt: new Date()
         })
-        .where(eq(users.id, existingByExternalId.id))
+        .where(eq(users.id, existingByEmail.id))
         .returning();
       return user;
     }
+  }
 
-    if (input.email) {
-      const [existingByEmail] = await transaction
-        .select()
-        .from(users)
-        .where(eq(users.email, input.email))
-        .limit(1);
-
-      if (existingByEmail) {
-        const [user] = await transaction
-          .update(users)
-          .set({
-            externalUserId: input.externalUserId,
-            name: input.name,
-            email: input.email,
-            deletedAt: null,
-            updatedAt: new Date()
-          })
-          .where(eq(users.id, existingByEmail.id))
-          .returning();
-        return user;
+  const [user] = await db
+    .insert(users)
+    .values(input)
+    .onConflictDoUpdate({
+      target: users.externalUserId,
+      set: {
+        name: input.name,
+        email: input.email,
+        deletedAt: null,
+        updatedAt: new Date()
       }
-    }
+    })
+    .returning();
 
-    const [user] = await transaction
-      .insert(users)
-      .values(input)
-      .onConflictDoUpdate({
-        target: users.externalUserId,
-        set: {
-          name: input.name,
-          email: input.email,
-          deletedAt: null,
-          updatedAt: new Date()
-        }
-      })
-      .returning();
-
-    return user;
-  });
+  return user;
 }
 
 export async function anonymizeUserProfile(externalUserId: string) {

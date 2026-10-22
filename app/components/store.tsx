@@ -8,10 +8,11 @@ import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 export type Product = {
   id: string;
   name: string;
-  category: "Kurtas" | "Sarees" | "Tops";
+  category: string;
   price: number;
   image: string;
   description: string;
+  images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
   badge?: string;
 };
 
@@ -23,6 +24,8 @@ export const products: Product[] = [
   { id: "everyday-shell-top", name: "Everyday Shell Top", category: "Tops", price: 1890, image: "https://images.pexels.com/photos/1488463/pexels-photo-1488463.jpeg?auto=compress&cs=tinysrgb&w=900", description: "A versatile shell top cut from soft cotton with a clean, easy neckline." },
   { id: "clay-wrap-top", name: "Clay Wrap Top", category: "Tops", price: 2190, image: "https://images.pexels.com/photos/1755428/pexels-photo-1755428.jpeg?auto=compress&cs=tinysrgb&w=900", description: "A softly structured wrap top in a warm clay tone, finished with fabric ties." }
 ];
+
+const productCategories: Product["category"][] = ["Kurtas", "Sarees", "Tops"];
 
 export const money = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 
@@ -130,22 +133,36 @@ export function StoreShell({ children }: { children: ReactNode }) {
 }
 
 export function ProductCard({ product }: { product: Product }) {
-  return <article className="product-card"><Link href={`/products/${product.id}`} className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<button className="heart" aria-label={`Save ${product.name}`} onClick={(event) => event.preventDefault()}>♡</button><Image src={product.image} alt={product.name} fill sizes="(max-width: 700px) 50vw, 25vw" /></Link><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
+  return <article className="product-card"><Link href={`/products/${product.id}`} className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<button className="heart" aria-label={`Save ${product.name}`} onClick={(event) => event.preventDefault()}>♡</button>{product.image && <img src={product.image} alt={product.name} />}</Link><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
+}
+
+export function HomePage({ products: latestProducts }: { products: Product[] }) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const carouselSlides = [
+    { src: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles clothing collection" },
+    { src: "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles everyday essentials" },
+    { src: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles new collection" }
+  ];
+  useEffect(() => {
+    const timer = window.setInterval(() => setActiveSlide((slide) => (slide + 1) % carouselSlides.length), 5000);
+    return () => window.clearInterval(timer);
+  }, [carouselSlides.length]);
+  return <><SiteHeader /><section className="hero-carousel" aria-label="Featured collection">{carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}</section><section className="collection section-pad" id="shop"><div className="section-heading"><div><p className="eyebrow">Shop the edit</p><h2>Made for <em>every day</em></h2></div><Link className="text-link" href="/products">View all products</Link></div>{latestProducts.length ? <div className="product-grid">{latestProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="empty-state">Products are coming soon.</p>}</section><section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=1100&q=85" alt="Kurtas collection" fill sizes="50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=900&q=85" alt="Sarees collection" fill sizes="25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=900&q=85" alt="Tops collection" fill sizes="25vw" /><span>Tops</span></Link></div></section><section className="manifesto"><p className="eyebrow">The Pebbles promise</p><h2>Less, but <em>better.</em></h2><div className="promise-grid"><div><span>01</span><h3>Made to last</h3><p>Thoughtful materials and quiet details that get better with time.</p></div><div><span>02</span><h3>Mindful by default</h3><p>Small batches, responsible choices and no unnecessary extras.</p></div><div><span>03</span><h3>For real life</h3><p>Useful, tactile and made for the beautiful mess of everyday.</p></div></div></section><SiteFooter /></>;
 }
 
 export function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: ReactNode; description?: string }) {
   return <section className="page-intro"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{description && <p>{description}</p>}</section>;
 }
 
-export function ProductListing() {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState(() => {
-    if (typeof window === "undefined") return "All";
-    const requestedCategory = new URLSearchParams(window.location.search).get("category");
-    return requestedCategory && ["Kurtas", "Sarees", "Tops"].includes(requestedCategory) ? requestedCategory : "All";
-  });
-  const visible = products.filter((product) => (category === "All" || product.category === category) && product.name.toLowerCase().includes(query.toLowerCase()));
-  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><div className="listing-toolbar"><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) => <button className={category === item ? "active" : ""} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products..." aria-label="Search products" /></div><div className="product-grid product-grid-list">{visible.map((product) => <ProductCard key={product.id} product={product} />)}</div>{visible.length === 0 && <p className="empty-state">No pieces found. Try another search.</p>}</section></StoreShell>;
+export function ProductListing({ products: listedProducts, category, query, page, totalPages }: { products: Product[]; category?: string; query?: string; page: number; totalPages: number }) {
+  const params = (nextPage: number, nextCategory = category, nextQuery = query) => {
+    const search = new URLSearchParams();
+    if (nextCategory) search.set("category", nextCategory);
+    if (nextQuery) search.set("query", nextQuery);
+    if (nextPage > 1) search.set("page", String(nextPage));
+    return `/products${search.toString() ? `?${search}` : ""}`;
+  };
+  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" action="/products"><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) => <Link className={(category ?? "All") === item ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div><input name="query" defaultValue={query} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></form><div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
 }
 
 export function ProductDetail({ product }: { product: Product }) {
@@ -156,7 +173,9 @@ export function ProductDetail({ product }: { product: Product }) {
     addToCart();
     setAdded(true);
   };
-  return <StoreShell><div className="detail-page"><div className="detail-image"><Image src={product.image} alt={product.name} fill sizes="(max-width: 800px) 100vw, 52vw" priority /></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={addProductToCart}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
+  const gallery = product.images?.length ? product.images : [{ imageUrl: product.image, altText: product.name, sortOrder: 0 }];
+  const [selectedImage, setSelectedImage] = useState(gallery[0].imageUrl);
+  return <StoreShell><div className="detail-page"><div className="detail-gallery"><div className="detail-image"><img src={selectedImage} alt={product.name} /></div><div className="detail-thumbnails">{gallery.map((image, index) => <button type="button" className={selectedImage === image.imageUrl ? "active" : ""} key={image.imageUrl} onClick={() => setSelectedImage(image.imageUrl)}><img src={image.imageUrl} alt={image.altText ?? `${product.name} image ${index + 1}`} /></button>)}</div></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options"><button>S</button><button>M</button><button>L</button><button>XL</button></div><button className="button dark-button add-button" onClick={addProductToCart}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
 }
 
 export function SimpleForm({ title, button, children, note }: { title: ReactNode; button: string; children: ReactNode; note?: string }) {
@@ -187,6 +206,7 @@ type AdminProduct = {
   price: string;
   stockQuantity: number;
   images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
+  primaryImageUrl?: string | null;
 };
 
 export function ProductAdminTable() {
@@ -210,28 +230,70 @@ export function ProductAdminTable() {
     setProducts((current) => current.filter((product) => product.id !== id));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}<table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td>{product.name}</td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.stockQuantity}</td><td><Link className="table-action" href={`/admin/products/${product.id}/edit`}>Edit →</Link><button className="table-action" onClick={() => void remove(product.id)}>Delete</button></td></tr>)}</tbody></table>{!products.length && !error && <p className="empty-state">No products yet.</p>}</div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}<table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.stockQuantity}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && !error && <p className="empty-state">No products yet.</p>}</div>;
 }
 
 export function ProductForm({ title, button, product }: { title: string; button: string; product?: AdminProduct }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+
+  useEffect(() => {
+    const nextPreviews = selectedFiles.map((file) => URL.createObjectURL(file));
+    setPreviews(nextPreviews);
+    return () => nextPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+  }, [selectedFiles]);
+
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const validFiles = Array.from(files).filter((file) => file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024);
+    if (validFiles.length !== files.length) {
+      setError("Images must be image files smaller than 5MB.");
+    }
+    if (validFiles.length) {
+      setSelectedFiles((current) => [...current, ...validFiles]);
+    }
+  };
+
+  const moveFile = (index: number, direction: -1 | 1) => {
+    setSelectedFiles((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError("");
-    const response = await fetch(product ? `/api/admin/products/${product.id}` : "/api/admin/products", {
-      method: product ? "PATCH" : "POST",
-      body: new FormData(event.currentTarget)
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      setError(body.error ?? "Unable to save product");
+    const formData = new FormData(event.currentTarget);
+    formData.delete("images");
+    selectedFiles.forEach((file) => formData.append("images", file));
+    try {
+      const response = await fetch(product ? `/api/admin/products/${product.id}` : "/api/admin/products", {
+        method: product ? "PATCH" : "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setError(body.error ?? "Unable to save product");
+        setSaving(false);
+        return;
+      }
+      window.location.href = "/admin/products";
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to save product");
       setSaving(false);
-      return;
     }
-    window.location.href = "/admin/products";
   };
 
-  return <div className="admin-content narrow-admin"><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><Field name="category" label="Category" defaultValue={product?.category ?? ""} /><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><Field name="stockQuantity" label="Stock quantity" type="number" defaultValue={product ? String(product.stockQuantity) : "0"} /><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label><label className="upload-box">＋<span>Upload product images</span><small>PNG, JPG up to 5MB; order follows selection</small><input name="images" type="file" accept="image/*" multiple /></label><button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>;
+  return <div className="admin-content narrow-admin"><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" defaultValue={product?.category ?? ""} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><Field name="stockQuantity" label="Stock quantity" type="number" defaultValue={product ? String(product.stockQuantity) : "0"} /><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{product?.images && product.images.length > 0 && <div className="image-order-list"><span className="image-order-label">Current image order</span>{product.images.map((image, index) => <div className="image-order-item" key={image.imageUrl}><span>{index + 1}</span><span>{image.altText || "Product image"}</span></div>)}</div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>;
 }

@@ -63,6 +63,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === "Authentication required") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (error instanceof Error && error.message === "Vendor access required") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (error instanceof Error && error.message.startsWith("Neon Object Storage")) {
+      console.error(error.message);
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    console.error("Unable to create product.", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create product" }, { status: 400 });
   }
 }
