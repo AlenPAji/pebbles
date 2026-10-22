@@ -3,14 +3,19 @@ import "server-only";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const bucket = process.env.S3_BUCKET_NAME;
+function environmentValue(name: string) {
+  const value = process.env[name]?.trim();
+  return value?.replace(/^(['"])(.*)\1$/, "$2").trim();
+}
+
+const bucket = environmentValue("S3_BUCKET_NAME");
 
 const storageConfig = {
-  region: process.env.AWS_REGION,
-  endpoint: process.env.AWS_ENDPOINT_URL_S3,
+  region: environmentValue("AWS_REGION"),
+  endpoint: environmentValue("AWS_ENDPOINT_URL_S3"),
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? ""
+    accessKeyId: environmentValue("AWS_ACCESS_KEY_ID") ?? "",
+    secretAccessKey: environmentValue("AWS_SECRET_ACCESS_KEY") ?? ""
   },
   forcePathStyle: true
 };
@@ -18,6 +23,12 @@ const storageConfig = {
 function getStorageClient() {
   if (!getBucket() || !storageConfig.region || !storageConfig.endpoint || !storageConfig.credentials.accessKeyId || !storageConfig.credentials.secretAccessKey) {
     throw new Error("Neon Object Storage credentials are not configured");
+  }
+
+  try {
+    new URL(storageConfig.endpoint);
+  } catch {
+    throw new Error("Neon Object Storage endpoint is not a valid URL");
   }
 
   return new S3Client(storageConfig);
