@@ -139,9 +139,9 @@ export function ProductCard({ product }: { product: Product }) {
 export function HomePage({ products: latestProducts }: { products: Product[] }) {
   const [activeSlide, setActiveSlide] = useState(0);
   const carouselSlides = [
-    { src: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles clothing collection" },
-    { src: "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles everyday essentials" },
-    { src: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1744&q=85", alt: "Pebbles new collection" }
+    { src: "/images/carousel-image-0.png", alt: "The Chanderi Blue Collection" },
+    { src: "/images/carousel-image-1.png", alt: "Pebbles clothing and accessories collection" },
+    { src: "/images/carousel-image-2.png", alt: "Pebbles new collection" }
   ];
   useEffect(() => {
     const timer = window.setInterval(() => setActiveSlide((slide) => (slide + 1) % carouselSlides.length), 5000);
