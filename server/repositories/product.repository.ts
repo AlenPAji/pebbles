@@ -258,11 +258,17 @@ export async function confirmOrderPayment(input: {
 
 export async function listUserOrders(userId: string, options: { page?: number; pageSize?: number } = {}) {
   const pageSize = options.pageSize ?? 10;
-  const page = Math.max(1, options.page ?? 1);
-  const [rows, [{ total }]] = await Promise.all([
-    db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(orders).where(eq(orders.userId, userId))
-  ]);
+  const requestedPage = Math.max(1, options.page ?? 1);
+  const [{ total }] = await db.select({ total: count() }).from(orders).where(eq(orders.userId, userId));
+  const totalPages = Math.max(1, Math.ceil(Number(total) / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.userId, userId))
+    .orderBy(desc(orders.createdAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
   return {
     orders: await Promise.all(rows.map(async (order) => ({
     ...order,
@@ -271,7 +277,7 @@ export async function listUserOrders(userId: string, options: { page?: number; p
     total: Number(total),
     page,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(Number(total) / pageSize))
+    totalPages
   };
 }
 
