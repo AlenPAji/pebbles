@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { money } from "../lib/format";
@@ -224,6 +224,8 @@ export function PageIntro({ eyebrow, title, description }: { eyebrow: string; ti
 
 export function ProductListing({ products: listedProducts, category, query, page, totalPages }: { products: Product[]; category?: string; query?: string; page: number; totalPages: number }) {
   const activeCategory = category?.trim().toLowerCase();
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState(query ?? "");
   const params = (nextPage: number, nextCategory = category, nextQuery = query) => {
     const search = new URLSearchParams();
     if (nextCategory) search.set("category", nextCategory);
@@ -231,7 +233,22 @@ export function ProductListing({ products: listedProducts, category, query, page
     if (nextPage > 1) search.set("page", String(nextPage));
     return `/products${search.toString() ? `?${search}` : ""}`;
   };
-  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" action="/products"><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) => <Link className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div><input name="query" defaultValue={query} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></form><div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
+  useEffect(() => {
+    setSearchTerm(query ?? "");
+  }, [query]);
+  useEffect(() => {
+    const normalizedSearch = searchTerm.trim();
+    if (normalizedSearch === (query ?? "").trim()) return;
+    const timeout = window.setTimeout(() => {
+      router.replace(params(1, category, normalizedSearch || undefined));
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm, query, category, router]);
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    router.replace(params(1, category, searchTerm.trim() || undefined));
+  };
+  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" onSubmit={submitSearch}><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) => <Link className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div><input name="query" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></form><div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
 }
 
 export function ProductDetail({ product }: { product: Product }) {
@@ -321,7 +338,19 @@ export function ProductAdminTable({ page = 1 }: { page?: number }) {
     setProducts((current) => current.filter((product) => product.id !== id));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">No products yet.</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 ? "disabled" : ""} href={`/admin/products?page=${Math.max(1, page - 1)}`}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={`/admin/products?page=${number}`} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={`/admin/products?page=${Math.min(totalPages, page + 1)}`}>Next</Link></nav>}</>}</div>;
+  const stockOut = async (product: AdminProduct) => {
+    if (!product.variants.length || product.variants.every((variant) => variant.stockQuantity === 0)) return;
+    if (!window.confirm(`Set every size of "${product.name}" to out of stock?`)) return;
+    const response = await fetch(`/api/admin/products/${product.id}/stock-out`, { method: "POST" });
+    if (!response.ok) {
+      setError("Unable to update product stock");
+      return;
+    }
+    const variants = await response.json() as AdminProduct["variants"];
+    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants } : item));
+  };
+
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">No products yet.</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 ? "disabled" : ""} href={`/admin/products?page=${Math.max(1, page - 1)}`}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={`/admin/products?page=${number}`} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={`/admin/products?page=${Math.min(totalPages, page + 1)}`}>Next</Link></nav>}</>}</div>;
 }
 
 type AdminOrder = {

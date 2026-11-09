@@ -193,6 +193,14 @@ export async function updateProductVariants(id: string, variants: ProductVariant
   return db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
 }
 
+export async function markProductOutOfStock(id: string) {
+  await db
+    .update(productVariants)
+    .set({ stockQuantity: 0 })
+    .where(eq(productVariants.productId, id));
+  return db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
+}
+
 export async function deleteProduct(id: string) {
   const [product] = await db.delete(products).where(eq(products.id, id)).returning();
   return product ?? null;
