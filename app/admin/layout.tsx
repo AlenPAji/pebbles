@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return children;
   } catch (error) {
     if (error instanceof Error && error.message === "Authentication required") {
-      redirect("/login");
+      redirect("/login?redirect_url=/admin");
     }
     throw error;
   }

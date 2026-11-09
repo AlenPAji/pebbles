@@ -5,6 +5,7 @@ import { money } from "../lib/format";
 import { listUserOrders } from "../../server/repositories/product.repository";
 import { ensureUserProfile } from "../../server/services/user.service";
 import { Pagination } from "../components/Pagination";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,15 @@ const statusLabels: Record<string, string> = {
 };
 
 export default async function OrdersPage({ searchParams }: { searchParams: { page?: string } }) {
-  const profile = await ensureUserProfile();
+  let profile;
+  try {
+    profile = await ensureUserProfile();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Authentication required") {
+      redirect("/login?redirect_url=/orders");
+    }
+    throw error;
+  }
   const page = Math.max(1, Number(searchParams.page) || 1);
   const result = await listUserOrders(profile.id, { page });
   const orders = result.orders;

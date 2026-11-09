@@ -372,9 +372,20 @@ export async function findAdminOrder(orderId: string) {
   return { ...order, items, address: address[0] ?? null, customer: user[0] ?? null };
 }
 
-export async function updateOrderStatus(orderId: string, status: AdminOrderStatus) {
+export async function updateOrderStatus(orderId: string, input: {
+  status: AdminOrderStatus;
+  shippingCarrier?: string | null;
+  trackingNumber?: string | null;
+  trackingUrl?: string | null;
+}) {
   const [order] = await db.update(orders)
-    .set({ status, updatedAt: new Date() })
+    .set({
+      status: input.status,
+      shippingCarrier: input.shippingCarrier ?? null,
+      trackingNumber: input.trackingNumber ?? null,
+      trackingUrl: input.trackingUrl ?? null,
+      updatedAt: new Date()
+    })
     .where(eq(orders.id, orderId))
     .returning();
   return order ?? null;

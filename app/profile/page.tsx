@@ -1,11 +1,20 @@
 import { ensureUserProfile } from "../../server/services/user.service";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Field, SignOutButton, SimpleForm } from "../components/store";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const profile = await ensureUserProfile();
+  let profile;
+  try {
+    profile = await ensureUserProfile();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Authentication required") {
+      redirect("/login?redirect_url=/profile");
+    }
+    throw error;
+  }
 
   return <SimpleForm title={<>Your <em>profile.</em></>} button="Save changes">
     <Field label="Full name" defaultValue={profile.name ?? ""} placeholder="Ananya Mehta" />

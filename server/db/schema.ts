@@ -94,6 +94,9 @@ export const orders = pgTable(
       .notNull()
       .references(() => users.id),
     status: orderStatus("status").default("pending_payment").notNull(),
+    shippingCarrier: varchar("shipping_carrier", { length: 100 }),
+    trackingNumber: varchar("tracking_number", { length: 255 }),
+    trackingUrl: text("tracking_url"),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
     shippingAmount: numeric("shipping_amount", { precision: 12, scale: 2 }).notNull(),
     totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),

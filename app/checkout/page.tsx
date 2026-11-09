@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { FormEvent, useEffect, useState } from "react";
 
-import { CartItem, StoreShell } from "../components/store";
+import { CartItem, StoreShell, useRequireAuth } from "../components/store";
 import { money } from "../lib/format";
 
 declare global {
@@ -25,6 +25,7 @@ export default function CheckoutPage() {
   const [item, setItem] = useState<CartItem | null>(null);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const requireAuth = useRequireAuth();
 
   useEffect(() => {
     const stored = window.localStorage.getItem("pebbles-cart-item");
@@ -39,6 +40,7 @@ export default function CheckoutPage() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!(await requireAuth())) return;
     if (!item) {
       setError("Your cart is empty.");
       return;

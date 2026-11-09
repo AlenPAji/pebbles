@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { money } from "../lib/format";
@@ -20,14 +20,6 @@ export type Product = {
   images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
   variants?: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
   badge?: string;
-};
-
-export type HomeOrder = {
-  id: string;
-  productName: string;
-  totalAmount: number;
-  status: string;
-  createdAt: string;
 };
 
 export const products: Product[] = [
@@ -115,12 +107,16 @@ export function useRequireAuth() {
 
 export function AccountLink({ className, children = "Account", "aria-label": ariaLabel }: { className?: string; children?: ReactNode; "aria-label"?: string }) {
   const { isLoaded, isSignedIn } = useAuth();
-  const requireAuth = useRequireAuth();
+  const { redirectToSignIn } = useClerk();
 
   const openAccount = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isLoaded) return;
     event.preventDefault();
 
-    if (!(await requireAuth())) return;
+    if (!isSignedIn) {
+      await redirectToSignIn({ redirectUrl: window.location.href });
+      return;
+    }
 
     try {
       const response = await fetch("/api/profile");
@@ -133,7 +129,7 @@ export function AccountLink({ className, children = "Account", "aria-label": ari
     }
   };
 
-  return <Link className={className} href={isLoaded && isSignedIn ? "/profile" : "/login"} onClick={openAccount} aria-label={ariaLabel}>{children}</Link>;
+  return <Link className={className} href={isSignedIn ? "/profile" : "/login"} onClick={openAccount} aria-label={ariaLabel}>{children}</Link>;
 }
 
 export function SignOutButton() {
@@ -160,12 +156,35 @@ export function SiteHeader() {
   );
 }
 
+function BottomNavIcon({ type }: { type: "shop" | "search" | "orders" | "account" | "bag" }) {
+  if (type === "shop") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 14v6M16 14v6" /></svg>;
+  if (type === "search") return <SearchIcon />;
+  if (type === "orders") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></svg>;
+  if (type === "account") return <AccountIcon />;
+  return <CartIcon />;
+}
+
+export function MobileBottomNav() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const count = useCartCount();
+  const isProductsPage = pathname === "/products";
+  const items = [
+    { href: "/", label: "Shop", type: "shop" as const, active: pathname === "/" },
+    { href: "/products", label: "Search", type: "search" as const, active: isProductsPage && !searchParams.has("category") },
+    { href: "/orders", label: "Orders", type: "orders" as const, active: pathname.startsWith("/orders") },
+    { href: "/profile", label: "Account", type: "account" as const, active: pathname.startsWith("/profile") },
+    { href: "/cart", label: "Bag", type: "bag" as const, active: pathname.startsWith("/cart") }
+  ];
+  return <nav className="mobile-bottom-nav" aria-label="Primary navigation">{items.map((item) => <Link className={item.active ? "active" : ""} href={item.href} key={item.label} aria-current={item.active ? "page" : undefined}><span className="bottom-nav-icon"><BottomNavIcon type={item.type} />{item.type === "bag" && count > 0 && <b>{count}</b>}</span><span>{item.label}</span></Link>)}</nav>;
+}
+
 export function SiteFooter() {
   return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Facebook</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Boutique</span><span>Made with intention in Kollam, India</span><div><Link href="/contact">Contact</Link><Link href="/terms-and-conditions">Terms &amp; Conditions</Link><Link href="/orders">Orders</Link><AccountLink /></div></div></footer>;
 }
 
 export function StoreShell({ children }: { children: ReactNode }) {
-  return <><SiteHeader />{children}<SiteFooter /></>;
+  return <><SiteHeader />{children}<SiteFooter /><MobileBottomNav /></>;
 }
 
 export function ProductCard({ product }: { product: Product }) {
@@ -184,7 +203,7 @@ function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" }) {
   return <svg className="promise-icon" viewBox="0 0 64 64" role="img" aria-label="Fast and free shipping"><path d="M7 18h32v24H7zM39 27h10l8 9v6H39zM17 48a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM49 48a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM39 35h18" /><path d="M14 27h14M21 21h10" /></svg>;
 }
 
-export function HomePage({ products: latestProducts, recentOrders = [] }: { products: Product[]; recentOrders?: HomeOrder[] }) {
+export function HomePage({ products: latestProducts }: { products: Product[] }) {
   const [activeSlide, setActiveSlide] = useState(0);
   const carouselSlides = [
     { src: "/images/carousel-image-0.png", alt: "The Chanderi Blue Collection" },
@@ -196,7 +215,7 @@ export function HomePage({ products: latestProducts, recentOrders = [] }: { prod
     const timer = window.setInterval(() => setActiveSlide((slide) => (slide + 1) % carouselSlides.length), 5000);
     return () => window.clearInterval(timer);
   }, [carouselSlides.length]);
-  return <><SiteHeader /><section className="hero-carousel" aria-label="Featured collection">{carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}</section>{recentOrders.length > 0 && <section className="home-orders section-pad"><div className="section-heading"><div><p className="eyebrow">Your account</p><h2>Recent <em>orders.</em></h2></div><Link className="home-orders-more" href="/orders" aria-label="View all orders">View more <span aria-hidden="true">↗</span></Link></div><div className="home-order-list">{recentOrders.slice(0, 3).map((order) => <Link href={`/orders/${order.id}`} key={order.id}><span>#{order.id.slice(0, 8).toUpperCase()}</span><strong>{order.productName}</strong><span>{money(order.totalAmount)}</span><b className={`status ${order.status}`}>{order.status.replace("_", " ")}</b><span>→</span></Link>)}</div></section>}<section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="/images/category-kurtas.jpg" alt="Model wearing a blue floral kurta beside peach flowers" fill sizes="(max-width: 800px) 100vw, 50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="/images/category-sarees.jpg" alt="Model in a colourful floral saree against a deep red backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="/images/category-tops-knit.jpg" alt="Model wearing a beige sleeveless knit top against a teal backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Tops</span></Link></div></section><section className="collection section-pad" id="shop"><div className="section-heading"><div><p className="eyebrow">Shop the edit</p><h2>Made for <em>every day</em></h2></div><Link className="text-link" href="/products">View all products</Link></div>{latestProducts.length ? <div className="product-grid">{latestProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="empty-state">Products are coming soon.</p>}</section><ShopByVideo /><ScrollEditorial imageSrc="/images/editorial-saree.webp" imageAlt="Woman in a pink and gold saree by the sea" eyebrow="The collection" title="Wear Your Story." description="Timeless Indian styles, made for the woman you are." ctaHref="/products" ctaLabel="Shop Now" /><section className="story story-with-banner section-pad" id="story"><div><p className="eyebrow">About Pebbles Boutique</p><h2>Style with a <em>local point of view.</em></h2></div><WearOurStory /><div className="story-copy"><p>Pebbles Boutique is a fashion destination based in Kollam, bringing together easy-to-wear pieces for everyday dressing and special moments.</p><p>Discover the latest looks and boutique updates on Instagram, or connect with us on Facebook.</p><div className="story-links"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Follow on Instagram <span aria-hidden="true">↗</span></a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Visit on Facebook <span aria-hidden="true">↗</span></a></div></div></section><section className="manifesto"><p className="eyebrow">The Pebbles promise</p><h2>Shop with <em>confidence.</em></h2><div className="promise-grid"><div><PromiseIcon type="cashback" /><span>01</span><h3>10% cashback</h3><p>Get 10% cashback on all app orders, every time you shop with us.</p></div><div><PromiseIcon type="returns" /><span>02</span><h3>30-day returns &amp; exchanges</h3><p>Enjoy fast and easy returns and exchanges within 30 days.</p></div><div><PromiseIcon type="shipping" /><span>03</span><h3>Fast &amp; free shipping</h3><p>Your favourites arrive quickly with free shipping, made simple.</p></div></div></section><SiteFooter /></>;
+  return <><SiteHeader /><section className="hero-carousel" aria-label="Featured collection">{carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}</section><section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="/images/category-kurtas.jpg" alt="Model wearing a blue floral kurta beside peach flowers" fill sizes="(max-width: 800px) 100vw, 50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="/images/category-sarees.jpg" alt="Model in a colourful floral saree against a deep red backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="/images/category-tops-knit.jpg" alt="Model wearing a beige sleeveless knit top against a teal backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Tops</span></Link></div></section><section className="collection section-pad" id="shop"><div className="section-heading"><div><p className="eyebrow">Shop the edit</p><h2>Made for <em>every day</em></h2></div><Link className="text-link" href="/products">View all products</Link></div>{latestProducts.length ? <div className="product-grid">{latestProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="empty-state">Products are coming soon.</p>}</section><ShopByVideo /><ScrollEditorial imageSrc="/images/editorial-saree.webp" imageAlt="Woman in a pink and gold saree by the sea" eyebrow="The collection" title="Wear Your Story." description="Timeless Indian styles, made for the woman you are." ctaHref="/products" ctaLabel="Shop Now" /><section className="story story-with-banner section-pad" id="story"><div><p className="eyebrow">About Pebbles Boutique</p><h2>Style with a <em>local point of view.</em></h2></div><WearOurStory /><div className="story-copy"><p>Pebbles Boutique is a fashion destination based in Kollam, bringing together easy-to-wear pieces for everyday dressing and special moments.</p><p>Discover the latest looks and boutique updates on Instagram, or connect with us on Facebook.</p><div className="story-links"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Follow on Instagram <span aria-hidden="true">↗</span></a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Visit on Facebook <span aria-hidden="true">↗</span></a></div></div></section><section className="manifesto"><p className="eyebrow">The Pebbles promise</p><h2>Shop with <em>confidence.</em></h2><div className="promise-grid"><div><PromiseIcon type="cashback" /><span>01</span><h3>10% cashback</h3><p>Get 10% cashback on all app orders, every time you shop with us.</p></div><div><PromiseIcon type="returns" /><span>02</span><h3>30-day returns &amp; exchanges</h3><p>Enjoy fast and easy returns and exchanges within 30 days.</p></div><div><PromiseIcon type="shipping" /><span>03</span><h3>Fast &amp; free shipping</h3><p>Your favourites arrive quickly with free shipping, made simple.</p></div></div></section><SiteFooter /><MobileBottomNav /></>;
 }
 
 export function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: ReactNode; description?: string }) {
@@ -235,9 +254,10 @@ export function ProductDetail({ product }: { product: Product }) {
     });
     setAdded(true);
   };
-  const gallery = product.images?.length ? product.images : [{ imageUrl: product.image, altText: product.name, sortOrder: 0 }];
-  const [selectedImage, setSelectedImage] = useState(gallery[0].imageUrl);
-  return <StoreShell><div className="detail-page"><div className="detail-gallery"><div className="detail-image"><img src={selectedImage} alt={product.name} /></div><div className="detail-thumbnails">{gallery.map((image, index) => <button type="button" className={selectedImage === image.imageUrl ? "active" : ""} key={image.imageUrl} onClick={() => setSelectedImage(image.imageUrl)}><img src={image.imageUrl} alt={image.altText ?? `${product.name} image ${index + 1}`} /></button>)}</div></div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="size-label">Select size <span>Size guide</span></div><div className="size-options" role="radiogroup" aria-label="Available sizes">{variants.map((variant) => <button type="button" role="radio" aria-checked={selectedSize === variant.size} aria-label={`${variant.size}, ${variant.stockQuantity > 0 ? `${variant.stockQuantity} available` : "sold out"}`} key={variant.size} className={`${selectedSize === variant.size ? "active" : ""} ${variant.stockQuantity === 0 ? "sold-out" : ""}`} disabled={variant.stockQuantity === 0} onClick={() => setSelectedSize(variant.size)}><strong>{variant.size}</strong><small>{variant.stockQuantity > 0 ? `${variant.stockQuantity} left` : "Sold out"}</small></button>)}</div>{!variants.length && <p className="form-note">Sizes are currently unavailable.</p>}<button className="button dark-button add-button" disabled={!selectedSize || !variants.find((variant) => variant.size === selectedSize && variant.stockQuantity > 0)} onClick={addProductToCart}>{added ? "Added to cart ✓" : "Add to cart"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b> 100% cotton, naturally dyed</p><p><b>Care</b> Gentle machine wash, dry in shade</p><p><b>Delivery</b> Ships within 2–4 business days</p></div></div></div></StoreShell>;
+  const gallery = product.images?.length ? product.images : product.image ? [{ imageUrl: product.image, altText: product.name, sortOrder: 0 }] : [];
+  const [selectedImage, setSelectedImage] = useState(gallery[0]?.imageUrl ?? "");
+  const currentImage = gallery.find((image) => image.imageUrl === selectedImage) ?? gallery[0];
+  return <StoreShell><main className="detail-page"><div className="detail-gallery"><div className="detail-image">{currentImage ? <img src={currentImage.imageUrl} alt={currentImage.altText ?? product.name} /> : <span className="detail-image-empty">Image coming soon</span>}</div>{gallery.length > 1 && <div className="detail-thumbnails" aria-label="Product images">{gallery.map((image, index) => <button type="button" className={currentImage?.imageUrl === image.imageUrl ? "active" : ""} key={image.imageUrl} onClick={() => setSelectedImage(image.imageUrl)} aria-label={`View image ${index + 1}`}><img src={image.imageUrl} alt="" /></button>)}</div>}</div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="detail-divider" /><div className="size-label"><span>Select size</span><button type="button">Size guide</button></div><div className="size-options" role="radiogroup" aria-label="Available sizes">{variants.map((variant) => <button type="button" role="radio" aria-checked={selectedSize === variant.size} aria-label={`${variant.size}, ${variant.stockQuantity > 0 ? `${variant.stockQuantity} available` : "sold out"}`} key={variant.size} className={`${selectedSize === variant.size ? "active" : ""} ${variant.stockQuantity === 0 ? "sold-out" : ""}`} disabled={variant.stockQuantity === 0} onClick={() => setSelectedSize(variant.size)}><strong>{variant.size}</strong><small>{variant.stockQuantity > 0 ? `${variant.stockQuantity} left` : "Sold out"}</small></button>)}</div>{!variants.length && <p className="form-note">Sizes are currently unavailable.</p>}<button className="button dark-button add-button" disabled={!selectedSize || !variants.find((variant) => variant.size === selectedSize && variant.stockQuantity > 0)} onClick={addProductToCart}>{added ? "Added to bag ✓" : "Add to bag"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b><span>100% cotton, naturally dyed</span></p><p><b>Care</b><span>Gentle machine wash, dry in shade</span></p><p><b>Delivery</b><span>Ships within 2–4 business days</span></p></div></div></main></StoreShell>;
 }
 
 export function SimpleForm({ title, button, children, note }: { title: ReactNode; button: string; children: ReactNode; note?: string }) {
