@@ -131,7 +131,14 @@ export async function findProduct(id: string) {
     .where(eq(productImages.productId, id))
     .orderBy(asc(productImages.sortOrder));
   const variants = await db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
-  return { ...product, images, variants };
+  return {
+    ...product,
+    images,
+    variants: variants.map((variant) => ({
+      ...variant,
+      stockQuantity: Number(variant.stockQuantity)
+    }))
+  };
 }
 
 export type ProductVariantInput = { size: string; sku: string; stockQuantity: number };
