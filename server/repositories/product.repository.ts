@@ -25,16 +25,27 @@ export type StoreProduct = {
   variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>;
 };
 
+async function resolveProductImage(image: typeof productImages.$inferSelect) {
+  try {
+    return {
+      ...image,
+      imageUrl: await getProductImageUrl(image.imageUrl)
+    };
+  } catch (error) {
+    console.error(`Unable to load image for product ${image.productId}.`, error);
+    return null;
+  }
+}
+
 async function withImageUrls(product: typeof products.$inferSelect): Promise<StoreProduct> {
   const images = await db
     .select()
     .from(productImages)
     .where(eq(productImages.productId, product.id))
     .orderBy(asc(productImages.sortOrder));
-  const imagesWithUrls = await Promise.all(images.map(async (image) => ({
-    ...image,
-    imageUrl: await getProductImageUrl(image.imageUrl)
-  })));
+  const imagesWithUrls = (await Promise.all(images.map(resolveProductImage))).filter(
+    (image): image is NonNullable<typeof image> => image !== null
+  );
   const variants = await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size));
   return {
     id: product.id,
@@ -57,7 +68,7 @@ export async function listStoreProducts(options: { category?: string; query?: st
   if (options.query) filters.push(sql`lower(${products.name}) like ${`%${options.query.toLowerCase()}%`}`);
   const where = filters.length ? and(...filters) : undefined;
   const [rows, [{ total }]] = await Promise.all([
-    db.select().from(products).where(where).orderBy(desc(products.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select().from(products).where(where).orderBy(desc(products.createdAt), desc(products.updatedAt), desc(products.id)).limit(pageSize).offset((page - 1) * pageSize),
     db.select({ total: count() }).from(products).where(where)
   ]);
   return {
@@ -70,6 +81,7 @@ export async function listStoreProducts(options: { category?: string; query?: st
 }
 
 export async function findStoreProduct(id: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
   const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1);
   return product ? withImageUrls(product) : null;
 }
@@ -78,7 +90,7 @@ export async function listProducts(options: { page?: number; pageSize?: number }
   const pageSize = options.pageSize ?? 10;
   const page = Math.max(1, options.page ?? 1);
   const [productRows, [{ total }]] = await Promise.all([
-    db.select().from(products).orderBy(desc(products.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select().from(products).orderBy(desc(products.createdAt), desc(products.updatedAt), desc(products.id)).limit(pageSize).offset((page - 1) * pageSize),
     db.select({ total: count() }).from(products)
   ]);
   return {

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { money } from "../lib/format";
@@ -88,6 +89,14 @@ export function CartIcon() {
   return <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
 }
 
+function SearchIcon() {
+  return <svg className="header-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></svg>;
+}
+
+function AccountIcon() {
+  return <svg className="header-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.7-3.5 3.1-5.3 7-5.3s6.3 1.8 7 5.3" /></svg>;
+}
+
 export function useRequireAuth() {
   const { isLoaded, isSignedIn } = useAuth();
   const { redirectToSignIn } = useClerk();
@@ -137,12 +146,12 @@ export function SiteHeader() {
     <>
       <div className="announcement">Free shipping on orders over ₹1,999 <span>✦</span> Easy returns, always</div>
       <header className="site-header">
-        <button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open menu">☰</button>
+        <button className="mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen}>☰</button>
         <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
           <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/about">About us</Link><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><AccountLink className="mobile-nav-account" />
         </nav>
-        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search">⌕</Link><AccountLink className="account-link" aria-label="Account">♙</AccountLink><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
+        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search"><SearchIcon /></Link><AccountLink className="account-link" aria-label="Account"><AccountIcon /></AccountLink><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
       </header>
     </>
   );
@@ -157,7 +166,7 @@ export function StoreShell({ children }: { children: ReactNode }) {
 }
 
 export function ProductCard({ product }: { product: Product }) {
-  return <article className="product-card"><Link href={`/products/${product.id}`} className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<button className="heart" aria-label={`Save ${product.name}`} onClick={(event) => event.preventDefault()}>♡</button>{product.image && <img src={product.image} alt={product.name} />}</Link><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
+  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
 }
 
 function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" }) {
@@ -180,6 +189,7 @@ export function HomePage({ products: latestProducts, recentOrders = [] }: { prod
     { src: "/images/carousel-image-2.png", alt: "Pebbles new collection" }
   ];
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(() => setActiveSlide((slide) => (slide + 1) % carouselSlides.length), 5000);
     return () => window.clearInterval(timer);
   }, [carouselSlides.length]);
@@ -238,7 +248,9 @@ export function Field({ label, name, type = "text", placeholder, defaultValue }:
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  return <div className="admin-layout"><aside className="admin-sidebar"><Link href="/admin" className="admin-brand"><Image src="/images/pebbles-pebbles-wordmark-white-transparent.svg" alt="Pebbles Studio" width={150} height={53} /></Link><nav><p>Overview</p><Link href="/admin">Dashboard</Link><p>Manage</p><Link href="/admin/products">Products</Link><Link href="/admin/categories">Categories</Link><Link href="/admin/orders">Orders</Link><Link href="/admin/customers">Customers</Link></nav><Link href="/" className="back-store">← View storefront</Link></aside><section className="admin-main"><header className="admin-header"><span>Tuesday, 20 October 2026</span><Link href="/login">Admin account ↗</Link></header>{children}</section></div>;
+  const pathname = usePathname();
+  const navLink = (href: string) => ({ "aria-current": pathname === href ? "page" as const : undefined });
+  return <div className="admin-layout"><aside className="admin-sidebar"><Link href="/admin" className="admin-brand"><Image src="/images/pebbles-pebbles-wordmark-white-transparent.svg" alt="Pebbles Studio" width={150} height={53} /></Link><nav aria-label="Vendor navigation"><p>Overview</p><Link href="/admin" {...navLink("/admin")}>Dashboard</Link><p>Manage</p><Link href="/admin/products" {...navLink("/admin/products")}>Products</Link><Link href="/admin/categories" {...navLink("/admin/categories")}>Categories</Link><Link href="/admin/orders" {...navLink("/admin/orders")}>Orders</Link><Link href="/admin/customers" {...navLink("/admin/customers")}>Customers</Link></nav><Link href="/" className="back-store">← View storefront</Link></aside><main className="admin-main"><header className="admin-header"><span>Tuesday, 20 October 2026</span><Link href="/login">Admin account ↗</Link></header>{children}</main></div>;
 }
 
 export function AdminTable({ type }: { type: "products" | "orders" | "customers" }) {
