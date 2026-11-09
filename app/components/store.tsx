@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
-import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { money } from "../lib/format";
 import { ScrollEditorial } from "./ScrollEditorial";
 import { ShopByVideo } from "./ShopByVideo";
+import { GoogleReviews } from "./GoogleReviews";
 import { WearOurStory } from "./WearOurStory";
+import { HeaderButterfly } from "./HeaderButterfly";
 
 export type Product = {
   id: string;
@@ -141,16 +143,20 @@ export function SignOutButton() {
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const count = useCartCount();
+  const headerRef = useRef<HTMLElement>(null);
+  const menuAnchorRef = useRef<HTMLSpanElement>(null);
+  const cartAnchorRef = useRef<HTMLSpanElement>(null);
   return (
     <>
       <div className="announcement">Free shipping on orders over ₹1,999 <span>✦</span> Easy returns, always</div>
-      <header className="site-header">
-        <button className="mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen}>☰</button>
-        <Link href="/" className="wordmark"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
+      <header className="site-header" ref={headerRef}>
+        <div className="header-menu-zone"><button className="mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen}>☰</button><span className="butterfly-anchor" ref={menuAnchorRef} aria-hidden="true" /></div>
+        <Link href="/" className="wordmark" aria-label="Pebbles Boutique home"><Image className="wordmark-name" src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={150} height={53} priority /></Link>
         <nav className={`nav-links ${menuOpen ? "nav-open" : ""}`}>
           <Link href="/products">Shop</Link><Link href="/products?category=Sarees">Collections</Link><Link href="/about">About us</Link><Link href="/contact">Contact</Link><Link href="/orders">Orders</Link><AccountLink className="mobile-nav-account" />
         </nav>
-        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search"><SearchIcon /></Link><AccountLink className="account-link" aria-label="Account"><AccountIcon /></AccountLink><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
+        <div className="header-actions"><Link className="search-link" href="/products" aria-label="Search"><SearchIcon /></Link><AccountLink className="account-link" aria-label="Account"><AccountIcon /></AccountLink><span className="butterfly-anchor" ref={cartAnchorRef} aria-hidden="true" /><Link className="bag-button" href="/cart" aria-label={`Open cart with ${count} items`}><CartIcon />{count > 0 && <span className="bag-count">{count}</span>}</Link></div>
+        <HeaderButterfly headerRef={headerRef} menuAnchorRef={menuAnchorRef} cartAnchorRef={cartAnchorRef} />
       </header>
     </>
   );
@@ -179,8 +185,19 @@ export function MobileBottomNav() {
   return <nav className="mobile-bottom-nav" aria-label="Primary navigation">{items.map((item) => <Link className={item.active ? "active" : ""} href={item.href} key={item.label} aria-current={item.active ? "page" : undefined}><span className="bottom-nav-icon"><BottomNavIcon type={item.type} />{item.type === "bag" && count > 0 && <b>{count}</b>}</span><span>{item.label}</span></Link>)}</nav>;
 }
 
+const footerPaymentMethods = [
+  { name: "Visa", src: "/images/payment-methods/visa.svg" },
+  { name: "UPI", src: "/images/payment-methods/upi.svg" },
+  { name: "Mastercard", src: "/images/payment-methods/mastercard.svg" },
+  { name: "Google Pay", src: "/images/payment-methods/google-pay.svg" }
+];
+
+function FooterPaymentMethods() {
+  return <div className="footer-payments" role="group" aria-label="Accepted payment methods">{footerPaymentMethods.map((method) => <span className="footer-payment-mark" key={method.name}><Image src={method.src} alt={method.name} width={42} height={24} unoptimized /></span>)}</div>;
+}
+
 export function SiteFooter() {
-  return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Facebook</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Boutique</span><span>Made with intention in Kollam, India</span><div><Link href="/contact">Contact</Link><Link href="/terms-and-conditions">Terms &amp; Conditions</Link><Link href="/orders">Orders</Link><AccountLink /></div></div></footer>;
+  return <footer><div className="footer-top"><Image src="/images/pebbles-pebbles-wordmark-black-transparent.svg" alt="Pebbles" width={130} height={46} /><p>Small joys, thoughtfully made.</p><div className="socials"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Facebook</a></div></div><div className="footer-bottom"><span>© 2025 Pebbles Boutique</span><div className="footer-links"><Link href="/contact">Contact</Link><Link href="/terms-and-conditions">Terms &amp; Conditions</Link><Link href="/orders">Orders</Link><AccountLink /></div><address className="footer-address"><strong className="footer-address-heading">Store Address</strong>Pebbles Boutique, laksham veedu junction, Kulakkada, Keralam 691521</address></div><FooterPaymentMethods /></footer>;
 }
 
 export function StoreShell({ children }: { children: ReactNode }) {
@@ -191,16 +208,20 @@ export function ProductCard({ product }: { product: Product }) {
   return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
 }
 
-function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" }) {
+function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" | "payment" }) {
   if (type === "cashback") {
-    return <svg className="promise-icon" viewBox="0 0 64 64" role="img" aria-label="Cashback"><path d="M17 29V17a4 4 0 0 1 8 0v11M25 25V13a4 4 0 0 1 8 0v14M33 25V17a4 4 0 0 1 8 0v15M41 28l3-3a4 4 0 0 1 6 5L39 42a10 10 0 0 1-7 3H20a7 7 0 0 1-7-7v-7a4 4 0 0 1 8 0v3" /><circle cx="20" cy="20" r="13" /><path d="M20 13v14M24 16.5c-1-1-2.2-1.5-4-1.5-2.2 0-3.5 1-3.5 2.5s1.3 2.2 3.5 2.7 3.5 1.2 3.5 2.7S22.2 25.5 20 25.5c-1.8 0-3-.5-4-1.5" /></svg>;
+    return <svg className="promise-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="21" /><path d="M23 23h19M23 30h19M38 23c0 7-5 10-15 10l15 12" /></svg>;
   }
 
   if (type === "returns") {
-    return <svg className="promise-icon" viewBox="0 0 64 64" role="img" aria-label="Returns and exchanges"><path d="m18 23 14-7 14 7-14 7-14-7Z M18 23v17l14 7 14-7V23M32 30v17M11 18a22 22 0 1 1-1 26" /><path d="m11 10 0 8 8 0" /><path d="m39 34-7-4-7 4 7 4 7-4Z" /></svg>;
+    return <svg className="promise-icon" viewBox="0 0 64 64" aria-hidden="true"><path d="M47 25a17 17 0 0 0-29-7l-5 5M13 14v9h9M17 39a17 17 0 0 0 29 7l5-5M51 50v-9h-9" /></svg>;
   }
 
-  return <svg className="promise-icon" viewBox="0 0 64 64" role="img" aria-label="Fast and free shipping"><path d="M7 18h32v24H7zM39 27h10l8 9v6H39zM17 48a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM49 48a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM39 35h18" /><path d="M14 27h14M21 21h10" /></svg>;
+  if (type === "shipping") {
+    return <svg className="promise-icon" viewBox="0 0 64 64" aria-hidden="true"><path d="M7 19h32v24H7zM39 27h10l8 9v7H39" /><circle cx="19" cy="46" r="5" /><circle cx="48" cy="46" r="5" /></svg>;
+  }
+
+  return <svg className="promise-icon" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 7 50 14v16c0 13-7 21-18 27-11-6-18-14-18-27V14L32 7Z" /><rect x="25" y="28" width="14" height="13" rx="2" /><path d="M28 28v-4a4 4 0 0 1 8 0v4" /></svg>;
 }
 
 export function HomePage({ products: latestProducts }: { products: Product[] }) {
@@ -215,7 +236,7 @@ export function HomePage({ products: latestProducts }: { products: Product[] }) 
     const timer = window.setInterval(() => setActiveSlide((slide) => (slide + 1) % carouselSlides.length), 5000);
     return () => window.clearInterval(timer);
   }, [carouselSlides.length]);
-  return <><SiteHeader /><section className="hero-carousel" aria-label="Featured collection">{carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}</section><section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="/images/category-kurtas.jpg" alt="Model wearing a blue floral kurta beside peach flowers" fill sizes="(max-width: 800px) 100vw, 50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="/images/category-sarees.jpg" alt="Model in a colourful floral saree against a deep red backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="/images/category-tops-knit.jpg" alt="Model wearing a beige sleeveless knit top against a teal backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Tops</span></Link></div></section><section className="collection section-pad" id="shop"><div className="section-heading"><div><p className="eyebrow">Shop the edit</p><h2>Made for <em>every day</em></h2></div><Link className="text-link" href="/products">View all products</Link></div>{latestProducts.length ? <div className="product-grid">{latestProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="empty-state">Products are coming soon.</p>}</section><ShopByVideo /><ScrollEditorial imageSrc="/images/editorial-saree.webp" imageAlt="Woman in a pink and gold saree by the sea" eyebrow="The collection" title="Wear Your Story." description="Timeless Indian styles, made for the woman you are." ctaHref="/products" ctaLabel="Shop Now" /><section className="story story-with-banner section-pad" id="story"><div><p className="eyebrow">About Pebbles Boutique</p><h2>Style with a <em>local point of view.</em></h2></div><WearOurStory /><div className="story-copy"><p>Pebbles Boutique is a fashion destination based in Kollam, bringing together easy-to-wear pieces for everyday dressing and special moments.</p><p>Discover the latest looks and boutique updates on Instagram, or connect with us on Facebook.</p><div className="story-links"><a href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noreferrer">Follow on Instagram <span aria-hidden="true">↗</span></a><a href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noreferrer">Visit on Facebook <span aria-hidden="true">↗</span></a></div></div></section><section className="manifesto"><p className="eyebrow">The Pebbles promise</p><h2>Shop with <em>confidence.</em></h2><div className="promise-grid"><div><PromiseIcon type="cashback" /><span>01</span><h3>10% cashback</h3><p>Get 10% cashback on all app orders, every time you shop with us.</p></div><div><PromiseIcon type="returns" /><span>02</span><h3>30-day returns &amp; exchanges</h3><p>Enjoy fast and easy returns and exchanges within 30 days.</p></div><div><PromiseIcon type="shipping" /><span>03</span><h3>Fast &amp; free shipping</h3><p>Your favourites arrive quickly with free shipping, made simple.</p></div></div></section><SiteFooter /><MobileBottomNav /></>;
+  return <><SiteHeader /><section className="hero-carousel" aria-label="Featured collection">{carouselSlides.map((slide, index) => <Image className={`hero-carousel-image ${index === activeSlide ? "active" : ""}`} key={slide.src} src={slide.src} alt={slide.alt} width={1744} height={608} priority={index === 0} />)}</section><section className="categories section-pad" id="collections"><div className="section-heading"><div><p className="eyebrow">Find your kind</p><h2>Explore our <em>world</em></h2></div></div><div className="category-grid"><Link className="category category-large" href="/products?category=Kurtas"><Image src="/images/category-kurtas.jpg" alt="Model wearing a blue floral kurta beside peach flowers" fill sizes="(max-width: 800px) 100vw, 50vw" /><span>Kurtas</span></Link><Link className="category" href="/products?category=Sarees"><Image src="/images/category-sarees.jpg" alt="Model in a colourful floral saree against a deep red backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Sarees</span></Link><Link className="category" href="/products?category=Tops"><Image src="/images/category-tops-knit.jpg" alt="Model wearing a beige sleeveless knit top against a teal backdrop" fill sizes="(max-width: 800px) 50vw, 25vw" /><span>Tops</span></Link></div></section><section className="collection section-pad" id="shop"><div className="section-heading"><div><p className="eyebrow">Shop the edit</p><h2>Made for <em>every day</em></h2></div><Link className="text-link" href="/products">View all products</Link></div>{latestProducts.length ? <div className="product-grid">{latestProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="empty-state">Products are coming soon.</p>}</section><ShopByVideo /><ScrollEditorial imageSrc="/images/editorial-saree.webp" imageAlt="Woman in a pink and gold saree by the sea" eyebrow="The collection" title="Wear Your Story." description="Timeless Indian styles, made for the woman you are." ctaHref="/products" ctaLabel="Shop Now" /><section className="story story-with-banner section-pad" id="story"><div><p className="eyebrow">About Pebbles Boutique</p><h2>Your <em>Style,</em> Your <em>Story.</em></h2></div><WearOurStory /><div className="story-copy"><p>At Pebbles Boutique, we bring together thoughtfully curated styles for everyday moments and special occasions. Discover pieces that celebrate your individuality, express your personality, and make every look uniquely yours.</p><p>Explore our latest collections and everyday inspirations on Instagram, or stay connected with us on Facebook.</p><div className="story-links"><a className="story-social-link" href="https://www.instagram.com/pebblesboutique2024" target="_blank" rel="noopener noreferrer" aria-label="Follow Pebbles Boutique on Instagram (opens in a new tab)"><Image className="story-social-icon" src="/images/social-instagram.svg" alt="" width={18} height={18} unoptimized /><span className="story-social-label">Follow on Instagram</span><span className="story-social-arrow" aria-hidden="true">↗</span></a><a className="story-social-link" href="https://www.facebook.com/share/1DsHE4o6HT/" target="_blank" rel="noopener noreferrer" aria-label="Connect with Pebbles Boutique on Facebook (opens in a new tab)"><Image className="story-social-icon" src="/images/social-facebook.svg" alt="" width={18} height={18} unoptimized /><span className="story-social-label">Connect on Facebook</span><span className="story-social-arrow" aria-hidden="true">↗</span></a></div></div></section><section className="manifesto promise-strip"><h2 className="promise-strip-title">The Pebbles promise</h2><div className="promise-grid"><div><PromiseIcon type="cashback" /><h3>10% cashback</h3><p>Get 10% cashback on your first order.</p></div><div><PromiseIcon type="returns" /><h3>30-day returns &amp; exchanges</h3><p>Enjoy fast and easy returns and exchanges within 30 days.</p></div><div><PromiseIcon type="shipping" /><h3>Fast &amp; free shipping</h3><p>Your favourites arrive quickly with free shipping, made simple.</p></div><div><PromiseIcon type="payment" /><h3>Secure Online Payment</h3><p>Your payment is processed through Razorpay and verified before we confirm your order.</p></div></div></section><GoogleReviews /><SiteFooter /><MobileBottomNav /></>;
 }
 
 export function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: ReactNode; description?: string }) {
