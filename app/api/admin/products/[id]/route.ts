@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { deleteProduct, findProduct, updateProduct, ProductVariantInput } from "../../../../../server/repositories/product.repository";
 import { deleteProductImage, uploadProductImage } from "../../../../../server/storage";
@@ -53,7 +54,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   } else {
     for (const image of product.images) await deleteProductImage(image.imageUrl);
   }
-  return NextResponse.json(await updateProduct(params.id, input, images, variants));
+  const updatedProduct = await updateProduct(params.id, input, images, variants);
+  revalidatePath("/", "page");
+  revalidatePath("/products", "page");
+  return NextResponse.json(updatedProduct);
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
