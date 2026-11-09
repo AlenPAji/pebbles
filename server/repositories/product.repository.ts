@@ -123,8 +123,19 @@ export async function listProductCategories() {
   for (const row of rows) {
     const category = row.category?.trim();
     if (!category) continue;
-    const key = category.toLowerCase();
+    const normalized = category.toLowerCase();
+    const key = normalized === "kurta" || normalized === "kurtas"
+      ? "kurtas"
+      : normalized === "saree" || normalized === "sarees"
+        ? "sarees"
+        : normalized === "top" || normalized === "tops"
+          ? "tops"
+          : normalized;
     categoryCounts.set(key, (categoryCounts.get(key) ?? 0) + 1);
+  }
+  for (const category of ["Kurtas", "Sarees", "Tops"]) {
+    const key = category.toLowerCase();
+    if (!categoryCounts.has(key)) categoryCounts.set(key, 0);
   }
   return Array.from(categoryCounts.entries())
     .map(([category, productCount]) => ({
