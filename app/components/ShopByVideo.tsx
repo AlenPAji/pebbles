@@ -198,5 +198,10 @@ export function ShopByVideo({ reels = shopByVideoReels, gallery = false }: { ree
         <button type="button" onClick={() => move(1)} disabled={!canNext} aria-label="Next videos">→</button>
       </div>}
     </div> : <p className="shop-by-video-empty">Coming soon.</p>}
+    {!gallery && <div className="shop-by-video-follow-wrap">
+      <a className="button shop-by-video-follow" href="https://www.instagram.com/pebblesboutique_ksa?psln=MW0wN24wMDg2bmtkOQ==" target="_blank" rel="noopener noreferrer">
+        Follow Us
+      </a>
+    </div>}
   </section>;
 }
