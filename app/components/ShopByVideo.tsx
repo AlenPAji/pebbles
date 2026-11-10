@@ -45,6 +45,7 @@ export function ShopVideoCard({ reel }: { reel: ShopVideo }) {
   const [nearViewport, setNearViewport] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [videoError, setVideoError] = useState(false);
 
   useEffect(() => {
@@ -100,10 +101,26 @@ export function ShopVideoCard({ reel }: { reel: ShopVideo }) {
     if (!reel.videoSrc || !nearViewport) return;
     const card = cardRef.current;
     if (!card) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const playWhenVisible = (isVisible: boolean) => {
+      if (!isVisible) {
+        video.pause();
+        return;
+      }
+      if (reducedMotion) return;
+      video.muted = true;
+      setIsMuted(true);
+      void video.play().catch(() => undefined);
+    };
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) videoRef.current?.pause();
+      playWhenVisible(entry.isIntersecting);
     }, { threshold: 0.25 });
     observer.observe(card);
+    if (card.getBoundingClientRect().top < window.innerHeight && card.getBoundingClientRect().bottom > 0) {
+      playWhenVisible(true);
+    }
     return () => observer.disconnect();
   }, [nearViewport, reel.videoSrc]);
 
@@ -121,6 +138,21 @@ export function ShopVideoCard({ reel }: { reel: ShopVideo }) {
     }
   }
 
+  async function toggleAudio() {
+    const video = videoRef.current;
+    if (!video) return;
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsMuted(nextMuted);
+    if (!nextMuted && video.paused) {
+      try {
+        await video.play();
+      } catch {
+        setVideoError(true);
+      }
+    }
+  }
+
   function handlePlay() {
     setIsPlaying(true);
     document.querySelectorAll<HTMLVideoElement>(".video-card-native").forEach((video) => {
@@ -131,7 +163,8 @@ export function ShopVideoCard({ reel }: { reel: ShopVideo }) {
   return <article className="video-card" ref={cardRef} aria-label={reel.title}>
     <div className="video-card-frame">
       {reel.videoSrc ? <>
-        {nearViewport && <video ref={videoRef} className="video-card-native" src={reel.videoSrc} poster={reel.posterSrc} preload="metadata" playsInline loop onPlay={handlePlay} onPause={() => setIsPlaying(false)} onError={() => setVideoError(true)} />}
+        {nearViewport && <video ref={videoRef} className="video-card-native" src={reel.videoSrc} poster={reel.posterSrc} preload="metadata" playsInline loop muted={isMuted} onPlay={handlePlay} onPause={() => setIsPlaying(false)} onError={() => setVideoError(true)} />}
+        {!videoError && <button className="video-card-audio" type="button" onClick={() => void toggleAudio()} aria-label={isMuted ? `Unmute ${reel.title}` : `Mute ${reel.title}`} title={isMuted ? "Unmute" : "Mute"}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4Z" /><path className="video-card-audio-wave" d="M16 9.5c1.4 1.4 1.4 3.6 0 5" /><path className="video-card-audio-wave" d="M19 7c2.8 2.8 2.8 7.2 0 10" />{isMuted && <path d="m16 8 5 8" />}</svg></button>}
         {!videoError && <button className={`video-card-control ${isPlaying ? "is-playing" : ""}`} type="button" onClick={toggleVideo} aria-label={`${isPlaying ? "Pause" : "Play"} ${reel.title}`}><span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span></button>}
         {videoError && <div className="video-card-placeholder is-error" role="status"><span>Video unavailable</span><a href={reel.url} target="_blank" rel="noopener noreferrer">View on Instagram ↗</a></div>}
       </> : <>

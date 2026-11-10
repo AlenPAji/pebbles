@@ -43,6 +43,10 @@ function variantsInput(form: FormData): ProductVariantInput[] {
     return { size, sku, stockQuantity: Number(stockQuantity) };
   });
   if (new Set(result.map((variant) => variant.size)).size !== result.length) throw new Error("Each size can only be added once");
+  if (String(form.get("category") ?? "").trim().toLowerCase() === "sarees") {
+    const stockQuantity = result.reduce((total, variant) => total + variant.stockQuantity, 0);
+    return [{ size: "One Size", sku: `${text(form, "sku")}-ONE`, stockQuantity }];
+  }
   return result;
 }
 

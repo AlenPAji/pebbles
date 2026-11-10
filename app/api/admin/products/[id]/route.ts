@@ -37,36 +37,48 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return { size: value.size.trim(), sku: value.sku.trim(), stockQuantity: Number(value.stockQuantity) };
     });
     if (variants.some((variant) => !variant.size || !variant.sku) || new Set(variants.map((variant) => variant.size)).size !== variants.length) throw new Error();
+    if (input.category.toLowerCase() === "sarees") {
+      variants = [{
+        size: "One Size",
+        sku: `${input.sku}-ONE`,
+        stockQuantity: variants.reduce((total, variant) => total + variant.stockQuantity, 0)
+      }];
+    }
   } catch {
     return NextResponse.json({ error: "Invalid product variants" }, { status: 400 });
   }
   const files = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
+  let retainedImages: Array<{ imageUrl: string; altText: string; sortOrder: number }> = [];
+  try {
+    const parsed = JSON.parse(String(form.get("retainedImages") ?? "[]")) as unknown;
+    if (!Array.isArray(parsed)) throw new Error();
+    const existingKeys = new Set(product.images.map((image) => image.imageUrl));
+    retainedImages = parsed.map((image, index) => {
+      if (!image || typeof image !== "object") throw new Error();
+      const value = image as Record<string, unknown>;
+      if (typeof value.imageUrl !== "string" || !existingKeys.has(value.imageUrl)) throw new Error();
+      return {
+        imageUrl: value.imageUrl,
+        altText: typeof value.altText === "string" ? value.altText : "",
+        sortOrder: index
+      };
+    });
+    if (new Set(retainedImages.map((image) => image.imageUrl)).size !== retainedImages.length) throw new Error();
+  } catch {
+    return NextResponse.json({ error: "Invalid retained product images" }, { status: 400 });
+  }
+
   const images = [];
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) return NextResponse.json({ error: "Images must be image files smaller than 5MB" }, { status: 400 });
     const key = `${params.id}/${index}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
     await uploadProductImage(key, Buffer.from(await file.arrayBuffer()), file.type);
-    images.push({ imageUrl: key, altText: file.name, sortOrder: index });
+    images.push({ imageUrl: key, altText: file.name, sortOrder: retainedImages.length + index });
   }
-  const retainedImages = product.images;
-  if (!images.length) {
-    try {
-      const parsed = JSON.parse(String(form.get("retainedImages") ?? "[]")) as unknown;
-      if (!Array.isArray(parsed)) throw new Error();
-      const retainedKeys = new Set(parsed.map((image) => {
-        if (!image || typeof image !== "object" || typeof (image as Record<string, unknown>).imageUrl !== "string") throw new Error();
-        return (image as Record<string, unknown>).imageUrl;
-      }));
-      images.push(...product.images
-        .filter((image) => retainedKeys.has(image.imageUrl))
-        .map(({ imageUrl, altText, sortOrder }) => ({ imageUrl, altText: altText ?? "", sortOrder })));
-    } catch {
-      return NextResponse.json({ error: "Invalid retained product images" }, { status: 400 });
-    }
-  }
-  const retainedKeys = new Set(images.map((image) => image.imageUrl));
-  for (const image of retainedImages) {
+  images.unshift(...retainedImages);
+  const retainedKeys = new Set(retainedImages.map((image) => image.imageUrl));
+  for (const image of product.images) {
     if (!retainedKeys.has(image.imageUrl)) {
       try {
         await deleteProductImage(image.imageUrl);

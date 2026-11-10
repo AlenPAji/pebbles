@@ -26,6 +26,16 @@ export type StoreProduct = {
   variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>;
 };
 
+function normalizeProductVariants(category: string | null, variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>) {
+  if (category?.trim().toLowerCase() !== "sarees") return variants;
+  return [{
+    id: variants[0]?.id ?? "",
+    size: "One Size",
+    sku: variants[0]?.sku ?? "",
+    stockQuantity: variants.reduce((total, variant) => total + Number(variant.stockQuantity), 0)
+  }];
+}
+
 async function resolveProductImage(image: typeof productImages.$inferSelect) {
   try {
     return {
@@ -47,7 +57,7 @@ async function withImageUrls(product: typeof products.$inferSelect): Promise<Sto
   const imagesWithUrls = (await Promise.all(images.map(resolveProductImage))).filter(
     (image): image is NonNullable<typeof image> => image !== null
   );
-  const variants = await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size));
+  const variants = normalizeProductVariants(product.category, await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size)));
   return {
     id: product.id,
     name: product.name,
@@ -108,7 +118,7 @@ export async function listProducts(options: { page?: number; pageSize?: number }
       .limit(1);
     return {
       ...product,
-      variants: await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size)),
+      variants: normalizeProductVariants(product.category, await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size))),
       primaryImageUrl: image ? await getProductImageUrl(image.imageUrl) : null
     };
     })),
@@ -162,10 +172,10 @@ export async function findProduct(id: string) {
   return {
     ...product,
     images,
-    variants: variants.map((variant) => ({
+    variants: normalizeProductVariants(product.category, variants.map((variant) => ({
       ...variant,
       stockQuantity: Number(variant.stockQuantity)
-    }))
+    })))
   };
 }
 
