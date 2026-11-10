@@ -43,6 +43,13 @@
       "when": 1794242399919,
       "tag": "0005_next_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794290986165,
+      "tag": "0006_panoramic_frog_thor",
+      "breakpoints": true
     }
   ]
 }

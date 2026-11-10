@@ -17,7 +17,7 @@ export type Product = {
   price: number;
   image: string;
   description: string;
-  images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
+  images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
   variants?: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
   badge?: string;
 };
@@ -306,7 +306,7 @@ type AdminProduct = {
   category: string | null;
   price: string;
   variants: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
-  images?: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
+  images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
   primaryImageUrl?: string | null;
 };
 
@@ -315,11 +315,12 @@ export function ProductAdminTable({ page = 1 }: { page?: number }) {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     setLoading(true);
     setError("");
-    fetch(`/api/admin/products?page=${page}`).then(async (response) => {
+    fetch(`/api/admin/products?page=${page}`, { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error("Unable to load products");
       const result = await response.json() as { products: AdminProduct[]; totalPages: number };
       setProducts(result.products);
@@ -329,28 +330,33 @@ export function ProductAdminTable({ page = 1 }: { page?: number }) {
 
   const remove = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
+    setError("");
+    setMessage("");
     const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError("Unable to delete product");
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      setError(result?.error ?? "Unable to delete product");
       return;
     }
 
+    const result = await response.json() as { message?: string };
     setProducts((current) => current.filter((product) => product.id !== id));
+    setMessage(result.message ?? "Product removed from the storefront.");
   };
 
   const stockOut = async (product: AdminProduct) => {
     if (!product.variants.length || product.variants.every((variant) => variant.stockQuantity === 0)) return;
     if (!window.confirm(`Set every size of "${product.name}" to out of stock?`)) return;
-    const response = await fetch(`/api/admin/products/${product.id}/stock-out`, { method: "POST" });
+    const response = await fetch(`/api/admin/products/${product.id}/stock-out`, { method: "POST", cache: "no-store" });
     if (!response.ok) {
       setError("Unable to update product stock");
       return;
     }
     const variants = await response.json() as AdminProduct["variants"];
-    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants } : item));
+    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants: variants.map((variant) => ({ ...variant, stockQuantity: 0 })) } : item));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">No products yet.</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 ? "disabled" : ""} href={`/admin/products?page=${Math.max(1, page - 1)}`}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={`/admin/products?page=${number}`} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={`/admin/products?page=${Math.min(totalPages, page + 1)}`}>Next</Link></nav>}</>}</div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">No products yet.</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 ? "disabled" : ""} href={`/admin/products?page=${Math.max(1, page - 1)}`}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={`/admin/products?page=${number}`} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={`/admin/products?page=${Math.min(totalPages, page + 1)}`}>Next</Link></nav>}</>}</div>;
 }
 
 type AdminOrder = {
@@ -399,6 +405,7 @@ export function ProductForm({ title, button, product }: { title: string; button:
   const [saving, setSaving] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [retainedImages, setRetainedImages] = useState(() => product?.images ?? []);
   const [variants, setVariants] = useState(() => product?.variants?.length ? product.variants.map(({ size, sku, stockQuantity }) => ({ size, sku, stockQuantity: Number(stockQuantity) })) : ["S", "M", "L", "XL", "XXL"].map((size) => ({ size, sku: product?.sku ? `${product.sku}-${size}` : "", stockQuantity: 0 })));
 
   useEffect(() => {
@@ -432,12 +439,23 @@ export function ProductForm({ title, button, product }: { title: string; button:
     setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
   };
 
+  const removeExistingImage = (imageUrl: string) => {
+    setRetainedImages((current) => current.filter((image) => image.imageUrl !== imageUrl));
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError("");
     const formData = new FormData(event.currentTarget);
     formData.set("variants", JSON.stringify(variants.filter((variant) => variant.sku.trim())));
+    if (product) {
+      formData.set("retainedImages", JSON.stringify(retainedImages.map(({ storageKey, imageUrl, altText, sortOrder }) => ({
+        imageUrl: storageKey ?? imageUrl,
+        altText: altText ?? "",
+        sortOrder
+      }))));
+    }
     formData.delete("images");
     selectedFiles.forEach((file) => formData.append("images", file));
     try {
@@ -458,5 +476,5 @@ export function ProductForm({ title, button, product }: { title: string; button:
     }
   };
 
-  return <div className="admin-content product-editor"><div><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" defaultValue={product?.category ?? ""} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{product?.images && product.images.length > 0 && <div className="image-order-list"><span className="image-order-label">Current image order</span><div className="current-image-grid">{product.images.map((image, index) => <div className="current-image" key={image.imageUrl}><img src={image.imageUrl} alt={image.altText || `Product image ${index + 1}`} /><div><span>{index + 1}.</span> {image.altText || "Product image"}</div></div>)}</div></div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>  <aside className="stock-manager"><p className="eyebrow">Inventory</p><h2>Manage stocks</h2><p>Set independent stock and SKU values for each available size.</p>{variants.map((variant, index) => <div className="variant-row" key={variant.size}><strong>{variant.size}</strong><input aria-label={`${variant.size} SKU`} placeholder="Variant SKU" value={variant.sku} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} /><input aria-label={`${variant.size} stock quantity`} type="number" min="0" step="1" value={variant.stockQuantity} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stockQuantity: Math.max(0, Number(event.target.value) || 0) } : item))} /></div>)}<p className="form-note">Leave a SKU blank to omit that size. Customer pages show availability automatically.</p></aside></div>;
+  return <div className="admin-content product-editor"><div><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" defaultValue={product?.category ?? ""} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{retainedImages.length > 0 && <div className="image-order-list"><span className="image-order-label">Current images</span><div className="current-image-grid">{retainedImages.map((image, index) => <div className="current-image" key={image.imageUrl}><img src={image.imageUrl} alt={image.altText || `Product image ${index + 1}`} /><div><span>{index + 1}.</span> {image.altText || "Product image"} <button type="button" onClick={() => removeExistingImage(image.imageUrl)} aria-label={`Remove ${image.altText || `product image ${index + 1}`}`}>Remove</button></div></div>)}</div></div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>  <aside className="stock-manager"><p className="eyebrow">Inventory</p><h2>Manage stocks</h2><p>Set independent stock and SKU values for each available size.</p>{variants.map((variant, index) => <div className="variant-row" key={variant.size}><strong>{variant.size}</strong><input aria-label={`${variant.size} SKU`} placeholder="Variant SKU" value={variant.sku} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} /><input aria-label={`${variant.size} stock quantity`} type="number" min="0" step="1" value={variant.stockQuantity} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stockQuantity: Math.max(0, Number(event.target.value) || 0) } : item))} /></div>)}<p className="form-note">Leave a SKU blank to omit that size. Customer pages show availability automatically.</p></aside></div>;
 }

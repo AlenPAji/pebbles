@@ -7,6 +7,8 @@ import { createProduct, listProducts, ProductVariantInput } from "../../../../se
 import { uploadProductImage } from "../../../../server/storage";
 import { requireVendor } from "../../../../server/services/vendor.service";
 
+export const dynamic = "force-dynamic";
+
 function text(form: FormData, key: string) {
   const value = form.get(key);
   if (typeof value !== "string" || !value.trim()) throw new Error(`${key} is required`);
@@ -61,7 +63,9 @@ export async function GET(request: Request) {
   try {
     await requireVendor();
     const page = Math.max(1, Number(new URL(request.url).searchParams.get("page")) || 1);
-    return NextResponse.json(await listProducts({ page }));
+    return NextResponse.json(await listProducts({ page }), {
+      headers: { "Cache-Control": "no-store" }
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Authentication required") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (error instanceof Error && error.message === "Vendor access required") return NextResponse.json({ error: "Forbidden" }, { status: 403 });

@@ -12,6 +12,7 @@ export default async function EditProductPage({ params }: { params: { id: string
     ...product,
     images: await Promise.all(product.images.map(async (image) => ({
       ...image,
+      storageKey: image.imageUrl,
       imageUrl: await getProductImageUrl(image.imageUrl)
     })))
   };

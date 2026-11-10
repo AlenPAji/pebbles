@@ -47,6 +47,7 @@ export const products = pgTable(
     description: text("description").notNull(),
     category: varchar("category", { length: 100 }),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps
   }
 );

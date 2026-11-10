@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, sum } from "drizzle-orm";
+import { unstable_noStore as noStore } from "next/cache";
 
 import { db } from "../db";
 import { orderAddresses, orderItems, orders, payments, productImages, products, productVariants, users } from "../db/schema";
@@ -60,9 +61,10 @@ async function withImageUrls(product: typeof products.$inferSelect): Promise<Sto
 }
 
 export async function listStoreProducts(options: { category?: string; query?: string; page?: number; pageSize?: number } = {}) {
+  noStore();
   const pageSize = options.pageSize ?? 9;
   const page = Math.max(1, options.page ?? 1);
-  const filters = [];
+  const filters = [isNull(products.deletedAt)];
   const category = options.category?.trim().toLowerCase();
   if (category) filters.push(sql`lower(trim(${products.category})) = ${category}`);
   if (options.query) filters.push(sql`lower(${products.name}) like ${`%${options.query.toLowerCase()}%`}`);
@@ -81,17 +83,20 @@ export async function listStoreProducts(options: { category?: string; query?: st
 }
 
 export async function findStoreProduct(id: string) {
+  noStore();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return null;
-  const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1);
+  const [product] = await db.select().from(products).where(and(eq(products.id, id), isNull(products.deletedAt))).limit(1);
   return product ? withImageUrls(product) : null;
 }
 
 export async function listProducts(options: { page?: number; pageSize?: number } = {}) {
+  noStore();
   const pageSize = options.pageSize ?? 10;
   const page = Math.max(1, options.page ?? 1);
+  const where = isNull(products.deletedAt);
   const [productRows, [{ total }]] = await Promise.all([
-    db.select().from(products).orderBy(desc(products.createdAt), desc(products.updatedAt), desc(products.id)).limit(pageSize).offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(products)
+    db.select().from(products).where(where).orderBy(desc(products.createdAt), desc(products.updatedAt), desc(products.id)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ total: count() }).from(products).where(where)
   ]);
   return {
     products: await Promise.all(productRows.map(async (product) => {
@@ -118,7 +123,7 @@ export async function listProductCategories() {
   const rows = await db
     .select({ category: products.category })
     .from(products)
-    .where(sql`${products.category} is not null and trim(${products.category}) <> ''`);
+    .where(and(isNull(products.deletedAt), sql`${products.category} is not null and trim(${products.category}) <> ''`));
   const categoryCounts = new Map<string, number>();
   for (const row of rows) {
     const category = row.category?.trim();
@@ -146,7 +151,7 @@ export async function listProductCategories() {
 }
 
 export async function findProduct(id: string) {
-  const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1);
+  const [product] = await db.select().from(products).where(and(eq(products.id, id), isNull(products.deletedAt))).limit(1);
   if (!product) return null;
   const images = await db
     .select()
@@ -202,8 +207,16 @@ export async function markProductOutOfStock(id: string) {
 }
 
 export async function deleteProduct(id: string) {
-  const [product] = await db.delete(products).where(eq(products.id, id)).returning();
-  return product ?? null;
+  const [{ orderCount }] = await db
+    .select({ orderCount: count() })
+    .from(orderItems)
+    .where(eq(orderItems.productId, id));
+  const [product] = await db
+    .update(products)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(products.id, id), isNull(products.deletedAt)))
+    .returning();
+  return product ? { product, hasOrderHistory: Number(orderCount) > 0 } : null;
 }
 
 export async function createPendingOrder(input: {
@@ -414,7 +427,7 @@ export async function getAdminDashboard() {
   const [sales, orderCount, productCount, customerCount, lowStockCount] = await Promise.all([
     db.select({ total: sum(orders.totalAmount) }).from(orders).where(inArray(orders.status, ["confirmed", "shipped", "delivered"])),
     db.select({ total: count() }).from(orders),
-    db.select({ total: count() }).from(products),
+    db.select({ total: count() }).from(products).where(isNull(products.deletedAt)),
     db.select({ total: count() }).from(users).where(and(eq(users.role, "customer"), isNull(users.deletedAt))),
     db.select({ total: count() }).from(productVariants).where(sql`${productVariants.stockQuantity} <= 5`)
   ]);

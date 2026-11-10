@@ -49,10 +49,31 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     await uploadProductImage(key, Buffer.from(await file.arrayBuffer()), file.type);
     images.push({ imageUrl: key, altText: file.name, sortOrder: index });
   }
+  const retainedImages = product.images;
   if (!images.length) {
-    images.push(...product.images.map(({ imageUrl, altText, sortOrder }) => ({ imageUrl, altText: altText ?? "", sortOrder })));
-  } else {
-    for (const image of product.images) await deleteProductImage(image.imageUrl);
+    try {
+      const parsed = JSON.parse(String(form.get("retainedImages") ?? "[]")) as unknown;
+      if (!Array.isArray(parsed)) throw new Error();
+      const retainedKeys = new Set(parsed.map((image) => {
+        if (!image || typeof image !== "object" || typeof (image as Record<string, unknown>).imageUrl !== "string") throw new Error();
+        return (image as Record<string, unknown>).imageUrl;
+      }));
+      images.push(...product.images
+        .filter((image) => retainedKeys.has(image.imageUrl))
+        .map(({ imageUrl, altText, sortOrder }) => ({ imageUrl, altText: altText ?? "", sortOrder })));
+    } catch {
+      return NextResponse.json({ error: "Invalid retained product images" }, { status: 400 });
+    }
+  }
+  const retainedKeys = new Set(images.map((image) => image.imageUrl));
+  for (const image of retainedImages) {
+    if (!retainedKeys.has(image.imageUrl)) {
+      try {
+        await deleteProductImage(image.imageUrl);
+      } catch (error) {
+        console.error(`Unable to delete image for product ${params.id}.`, error);
+      }
+    }
   }
   const updatedProduct = await updateProduct(params.id, input, images, variants);
   revalidatePath("/", "page");
@@ -64,7 +85,20 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   await requireVendor();
   const product = await findProduct(params.id);
   if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
-  for (const image of product.images) await deleteProductImage(image.imageUrl);
-  await deleteProduct(params.id);
-  return new Response(null, { status: 204 });
+  const deletion = await deleteProduct(params.id);
+  if (!deletion) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  for (const image of product.images) {
+    try {
+      await deleteProductImage(image.imageUrl);
+    } catch (error) {
+      console.error(`Unable to delete image for product ${params.id}.`, error);
+    }
+  }
+  revalidatePath("/", "page");
+  revalidatePath("/products", "page");
+  return NextResponse.json({
+    message: deletion.hasOrderHistory
+      ? "This product is part of existing orders, so it was archived instead of permanently deleted. Past order records were preserved."
+      : "Product deleted successfully."
+  });
 }
