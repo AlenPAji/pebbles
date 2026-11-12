@@ -99,11 +99,26 @@ export async function findStoreProduct(id: string) {
   return product ? withImageUrls(product) : null;
 }
 
-export async function listProducts(options: { page?: number; pageSize?: number } = {}) {
+export async function listProducts(options: { page?: number; pageSize?: number; query?: string } = {}) {
   noStore();
   const pageSize = options.pageSize ?? 10;
   const page = Math.max(1, options.page ?? 1);
-  const where = isNull(products.deletedAt);
+  const query = options.query?.trim().toLowerCase();
+  const where = and(
+    isNull(products.deletedAt),
+    query
+      ? sql`(
+          lower(${products.name}) like ${`%${query}%`}
+          or lower(${products.sku}) like ${`%${query}%`}
+          or exists (
+            select 1
+            from ${productVariants}
+            where ${productVariants.productId} = ${products.id}
+              and lower(${productVariants.sku}) like ${`%${query}%`}
+          )
+        )`
+      : undefined
+  );
   const [productRows, [{ total }]] = await Promise.all([
     db.select().from(products).where(where).orderBy(desc(products.createdAt), desc(products.updatedAt), desc(products.id)).limit(pageSize).offset((page - 1) * pageSize),
     db.select({ total: count() }).from(products).where(where)

@@ -66,8 +66,10 @@ async function uploadImages(form: FormData, productId: string) {
 export async function GET(request: Request) {
   try {
     await requireVendor();
-    const page = Math.max(1, Number(new URL(request.url).searchParams.get("page")) || 1);
-    return NextResponse.json(await listProducts({ page }), {
+    const searchParams = new URL(request.url).searchParams;
+    const page = Math.max(1, Number(searchParams.get("page")) || 1);
+    const query = searchParams.get("q") ?? undefined;
+    return NextResponse.json(await listProducts({ page, query }), {
       headers: { "Cache-Control": "no-store" }
     });
   } catch (error) {

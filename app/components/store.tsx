@@ -205,7 +205,32 @@ export function StoreShell({ children }: { children: ReactNode }) {
 }
 
 export function ProductCard({ product }: { product: Product }) {
-  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
+  const [sizePickerOpen, setSizePickerOpen] = useState(false);
+  const [selectedSize, setSelectedSize] = useState("");
+  const availableVariants = (product.variants ?? []).filter((variant) => variant.stockQuantity > 0);
+
+  const buyNow = (variant: NonNullable<Product["variants"]>[number]) => {
+    setCartItem({
+      productId: product.id,
+      variantId: variant.id ?? "",
+      name: product.name,
+      size: variant.size,
+      sku: variant.sku,
+      price: product.price,
+      quantity: 1
+    });
+    window.location.href = "/checkout";
+  };
+
+  const handleBuyNow = () => {
+    if (availableVariants.length === 1) {
+      buyNow(availableVariants[0]);
+      return;
+    }
+    if (availableVariants.length > 1) setSizePickerOpen((open) => !open);
+  };
+
+  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div><div className="product-buy"><button className="buy-now-button" type="button" disabled={!availableVariants.length} aria-expanded={availableVariants.length > 1 ? sizePickerOpen : undefined} onClick={handleBuyNow}>{availableVariants.length ? "Buy now" : "Sold out"} <span aria-hidden="true">↗</span></button>{sizePickerOpen && <div className="buy-now-options" role="group" aria-label={`Choose a size for ${product.name}`}><span>Choose size</span>{availableVariants.map((variant) => <button key={variant.id ?? variant.size} type="button" className={selectedSize === variant.size ? "selected" : ""} onClick={() => { setSelectedSize(variant.size); buyNow(variant); }}>{variant.size}</button>)}</div>}</div></article>;
 }
 
 function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" | "payment" }) {
@@ -332,23 +357,39 @@ type AdminProduct = {
   primaryImageUrl?: string | null;
 };
 
-export function ProductAdminTable({ page = 1 }: { page?: number }) {
+export function ProductAdminTable({ page = 1, initialQuery = "" }: { page?: number; initialQuery?: string }) {
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
 
   useEffect(() => {
     setLoading(true);
     setError("");
-    fetch(`/api/admin/products?page=${page}`, { cache: "no-store" }).then(async (response) => {
+    const params = new URLSearchParams({ page: String(debouncedQuery ? 1 : page) });
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    fetch(`/api/admin/products?${params}`, { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error("Unable to load products");
       const result = await response.json() as { products: AdminProduct[]; totalPages: number };
       setProducts(result.products);
       setTotalPages(result.totalPages);
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Unable to load products")).finally(() => setLoading(false));
-  }, [page]);
+  }, [page, debouncedQuery]);
+
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    if (nextPage > 1) params.set("page", String(nextPage));
+    return `/admin/products?${params}`;
+  };
 
   const remove = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
@@ -378,7 +419,7 @@ export function ProductAdminTable({ page = 1 }: { page?: number }) {
     setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants: variants.map((variant) => ({ ...variant, stockQuantity: 0 })) } : item));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">No products yet.</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 ? "disabled" : ""} href={`/admin/products?page=${Math.max(1, page - 1)}`}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={`/admin/products?page=${number}`} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={`/admin/products?page=${Math.min(totalPages, page + 1)}`}>Next</Link></nav>}</>}</div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}<label className="admin-search"><span>Search products</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or SKU" aria-describedby="product-search-hint" /><small id="product-search-hint">Results update as you type</small></label>{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">{debouncedQuery ? "No products match your search." : "No products yet."}</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.max(1, (debouncedQuery ? 1 : page) - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === (debouncedQuery ? 1 : page) ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.min(totalPages, (debouncedQuery ? 1 : page) + 1))}>Next</Link></nav>}</>}</div>;
 }
 
 type AdminOrder = {
