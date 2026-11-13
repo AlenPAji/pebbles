@@ -12,6 +12,8 @@ export type ProductInput = {
   name: string;
   description: string;
   category: string;
+  colorName: string;
+  colorHex: string;
   price: string;
 };
 
@@ -21,6 +23,8 @@ export type StoreProduct = {
   category: string;
   price: number;
   description: string;
+  colorName: string | null;
+  colorHex: string | null;
   image: string;
   images: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
   variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>;
@@ -64,19 +68,25 @@ async function withImageUrls(product: typeof products.$inferSelect): Promise<Sto
     category: product.category ?? "Uncategorized",
     price: Number(product.price),
     description: product.description,
+    colorName: product.colorName,
+    colorHex: product.colorHex,
     image: imagesWithUrls[0]?.imageUrl ?? "",
     images: imagesWithUrls,
     variants
   };
 }
 
-export async function listStoreProducts(options: { category?: string; query?: string; page?: number; pageSize?: number } = {}) {
+export async function listStoreProducts(options: { category?: string; color?: string; size?: string; query?: string; page?: number; pageSize?: number } = {}) {
   noStore();
   const pageSize = options.pageSize ?? 9;
   const page = Math.max(1, options.page ?? 1);
   const filters = [isNull(products.deletedAt)];
   const category = options.category?.trim().toLowerCase();
   if (category) filters.push(sql`lower(trim(${products.category})) = ${category}`);
+  const color = options.color?.trim().toLowerCase();
+  if (color) filters.push(sql`lower(trim(${products.colorName})) = ${color}`);
+  const size = options.size?.trim().toLowerCase();
+  if (size) filters.push(sql`exists (select 1 from ${productVariants} where ${productVariants.productId} = ${products.id} and lower(trim(${productVariants.size})) = ${size} and ${productVariants.stockQuantity} > 0)`);
   if (options.query) filters.push(sql`lower(${products.name}) like ${`%${options.query.toLowerCase()}%`}`);
   const where = filters.length ? and(...filters) : undefined;
   const [rows, [{ total }]] = await Promise.all([
@@ -90,6 +100,14 @@ export async function listStoreProducts(options: { category?: string; query?: st
     pageSize,
     totalPages: Math.max(1, Math.ceil(Number(total) / pageSize))
   };
+}
+
+export async function listProductColors() {
+  return db.select({ name: products.colorName, hex: products.colorHex })
+    .from(products)
+    .where(and(isNull(products.deletedAt), sql`${products.colorName} is not null and trim(${products.colorName}) <> ''`))
+    .groupBy(products.colorName, products.colorHex)
+    .orderBy(asc(products.colorName));
 }
 
 export async function findStoreProduct(id: string) {

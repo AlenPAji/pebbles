@@ -19,6 +19,8 @@ export type Product = {
   price: number;
   image: string;
   description: string;
+  colorName?: string | null;
+  colorHex?: string | null;
   images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
   variants?: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
   badge?: string;
@@ -205,32 +207,7 @@ export function StoreShell({ children }: { children: ReactNode }) {
 }
 
 export function ProductCard({ product }: { product: Product }) {
-  const [sizePickerOpen, setSizePickerOpen] = useState(false);
-  const [selectedSize, setSelectedSize] = useState("");
-  const availableVariants = (product.variants ?? []).filter((variant) => variant.stockQuantity > 0);
-
-  const buyNow = (variant: NonNullable<Product["variants"]>[number]) => {
-    setCartItem({
-      productId: product.id,
-      variantId: variant.id ?? "",
-      name: product.name,
-      size: variant.size,
-      sku: variant.sku,
-      price: product.price,
-      quantity: 1
-    });
-    window.location.href = "/checkout";
-  };
-
-  const handleBuyNow = () => {
-    if (availableVariants.length === 1) {
-      buyNow(availableVariants[0]);
-      return;
-    }
-    if (availableVariants.length > 1) setSizePickerOpen((open) => !open);
-  };
-
-  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div><div className="product-buy"><button className="buy-now-button" type="button" disabled={!availableVariants.length} aria-expanded={availableVariants.length > 1 ? sizePickerOpen : undefined} onClick={handleBuyNow}>{availableVariants.length ? "Buy now" : "Sold out"} <span aria-hidden="true">↗</span></button>{sizePickerOpen && <div className="buy-now-options" role="group" aria-label={`Choose a size for ${product.name}`}><span>Choose size</span>{availableVariants.map((variant) => <button key={variant.id ?? variant.size} type="button" className={selectedSize === variant.size ? "selected" : ""} onClick={() => { setSelectedSize(variant.size); buyNow(variant); }}>{variant.size}</button>)}</div>}</div></article>;
+  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
 }
 
 function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" | "payment" }) {
@@ -268,33 +245,54 @@ export function PageIntro({ eyebrow, title, description }: { eyebrow: string; ti
   return <section className="page-intro"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{description && <p>{description}</p>}</section>;
 }
 
-export function ProductListing({ products: listedProducts, category, query, page, totalPages }: { products: Product[]; category?: string; query?: string; page: number; totalPages: number }) {
+export function ProductListing({ products: listedProducts, category, color, size, colors, query, page, totalPages }: { products: Product[]; category?: string; color?: string; size?: string; colors: Array<{ name: string | null; hex: string | null }>; query?: string; page: number; totalPages: number }) {
   const activeCategory = category?.trim().toLowerCase();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState(query ?? "");
-  const params = (nextPage: number, nextCategory = category, nextQuery = query) => {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const params = (nextPage: number, nextCategory = category, nextColor = color, nextSize = size, nextQuery = query) => {
     const search = new URLSearchParams();
     if (nextCategory) search.set("category", nextCategory);
+    if (nextColor) search.set("color", nextColor);
+    if (nextSize) search.set("size", nextSize);
     if (nextQuery) search.set("query", nextQuery);
     if (nextPage > 1) search.set("page", String(nextPage));
     return `/products${search.toString() ? `?${search}` : ""}`;
   };
   useEffect(() => {
     setSearchTerm(query ?? "");
-  }, [query]);
+    setResultsLoading(false);
+  }, [query, category, color, size]);
+  useEffect(() => {
+    setResultsLoading(false);
+  }, [listedProducts]);
+  const updateSearchTerm = (value: string) => {
+    setSearchTerm(value);
+    setResultsLoading(true);
+  };
   useEffect(() => {
     const normalizedSearch = searchTerm.trim();
     if (normalizedSearch === (query ?? "").trim()) return;
     const timeout = window.setTimeout(() => {
-      router.replace(params(1, category, normalizedSearch || undefined));
+      router.replace(params(1, category, color, size, normalizedSearch), { scroll: false });
     }, 350);
     return () => window.clearTimeout(timeout);
-  }, [searchTerm, query, category, router]);
+  }, [searchTerm, query, category, color, size, router]);
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    router.replace(params(1, category, searchTerm.trim() || undefined));
+    setResultsLoading(true);
+    router.replace(params(1, category, color, size, searchTerm.trim()), { scroll: false });
   };
-  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" onSubmit={submitSearch}><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) => <Link className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div><input name="query" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></form><div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
+  const activeFilterCount = [category, color, size].filter(Boolean).length;
+  const clearFilters = () => {
+    setFiltersOpen(false);
+    setResultsLoading(true);
+    const search = new URLSearchParams();
+    if (query?.trim()) search.set("query", query.trim());
+    router.push(`/products${search.toString() ? `?${search}` : ""}`, { scroll: false });
+  };
+  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" onSubmit={submitSearch}>  <div className="listing-search-field"><input name="query" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></div><div className="listing-filter-actions"><button className={`filter-toggle${filtersOpen ? " active" : ""}`} type="button" aria-expanded={filtersOpen} aria-controls="product-filters" onClick={() => setFiltersOpen((open) => !open)}>Filter products{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>}<span aria-hidden="true">⌄</span></button></div></form>{filtersOpen &&   <div className="product-filters" id="product-filters" aria-label="Product filters"><div className="product-filter-header"><span>Refine your results</span>{activeFilterCount > 0 && <button className="filter-clear" type="button" onClick={clearFilters}>Clear filters</button>}</div><div className="product-filter-group"><span className="product-filter-heading">Category</span><div className="filter-buttons">{["All", "Kurtas", "Sarees", "Tops"].map((item) =>   <Link scroll={false} onClick={() => setResultsLoading(true)} className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div></div><label className="listing-filter"><span>Color</span>  <select value={color ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, event.target.value || undefined, size), { scroll: false }); }}><option value="">All colors</option>{colors.map((option) => <option value={option.name ?? ""} key={`${option.name}-${option.hex}`}>{option.name}</option>)}</select></label><label className="listing-filter"><span>Size</span>  <select value={size ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, color, event.target.value || undefined), { scroll: false }); }}><option value="">All sizes</option>{["S", "M", "L", "XL", "XXL", "XXXL", "One Size"].map((option) => <option value={option} key={option}>{option}</option>)}</select></label></div>}<div className={`product-results${resultsLoading ? " is-loading" : ""}`} aria-busy={resultsLoading}>{resultsLoading && <div className="product-results-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><span className="visually-hidden">Loading products</span></div>}<div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!resultsLoading && !listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}</div>{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
 }
 
 export function ProductDetail({ product }: { product: Product }) {
@@ -351,6 +349,8 @@ type AdminProduct = {
   name: string;
   description: string;
   category: string | null;
+  colorName: string | null;
+  colorHex: string | null;
   price: string;
   variants: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
   images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
@@ -419,7 +419,7 @@ export function ProductAdminTable({ page = 1, initialQuery = "" }: { page?: numb
     setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants: variants.map((variant) => ({ ...variant, stockQuantity: 0 })) } : item));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}<label className="admin-search"><span>Search products</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or SKU" aria-describedby="product-search-hint" /><small id="product-search-hint">Results update as you type</small></label>{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">{debouncedQuery ? "No products match your search." : "No products yet."}</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.max(1, (debouncedQuery ? 1 : page) - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === (debouncedQuery ? 1 : page) ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.min(totalPages, (debouncedQuery ? 1 : page) + 1))}>Next</Link></nav>}</>}</div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}<label className="admin-search"><span>Search products</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or SKU" aria-describedby="product-search-hint" /><small id="product-search-hint">Results update as you type</small></label>{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Color</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td><span className="admin-color-swatch" style={{ backgroundColor: product.colorHex ?? "#D8D6CF" }} aria-label={product.colorName ?? "No color"} />{product.colorName ?? "—"}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">{debouncedQuery ? "No products match your search." : "No products yet."}</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.max(1, (debouncedQuery ? 1 : page) - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === (debouncedQuery ? 1 : page) ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.min(totalPages, (debouncedQuery ? 1 : page) + 1))}>Next</Link></nav>}</>}</div>;
 }
 
 type AdminOrder = {
@@ -470,6 +470,7 @@ export function ProductForm({ title, button, product }: { title: string; button:
   const [previews, setPreviews] = useState<string[]>([]);
   const [retainedImages, setRetainedImages] = useState(() => product?.images ?? []);
   const [category, setCategory] = useState(product?.category ?? "");
+  const [colorHex, setColorHex] = useState(product?.colorHex ?? "#182B3D");
   const [variants, setVariants] = useState(() => product?.variants?.length ? product.variants.map(({ size, sku, stockQuantity }) => ({ size, sku, stockQuantity: Number(stockQuantity) })) : ["S", "M", "L", "XL", "XXL", "XXXL"].map((size) => ({ size, sku: product?.sku ? `${product.sku}-${size}` : "", stockQuantity: 0 })));
   const isSaree = category.toLowerCase() === "sarees";
 
@@ -535,6 +536,7 @@ export function ProductForm({ title, button, product }: { title: string; button:
     setSaving(true);
     setError("");
     const formData = new FormData(event.currentTarget);
+    formData.set("colorHex", colorHex);
     const submittedVariants = isSaree
       ? [{ size: "One Size", sku: `${String(formData.get("sku") ?? "").trim()}-ONE`, stockQuantity: variants[0]?.stockQuantity ?? 0 }]
       : variants.filter((variant) => variant.sku.trim());
@@ -566,5 +568,5 @@ export function ProductForm({ title, button, product }: { title: string; button:
     }
   };
 
-  return <div className="admin-content product-editor"><div><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" value={category} onChange={(event) => setCategory(event.target.value)} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{retainedImages.length > 0 && <div className="image-order-list"><span className="image-order-label">Current images · first image is the storefront image</span><div className="current-image-grid">{retainedImages.map((image, index) => <div className="current-image" key={image.storageKey ?? image.imageUrl}><img src={image.imageUrl} alt={image.altText || `Product image ${index + 1}`} /><div className="image-preview-meta"><strong>{index + 1}. {image.altText || "Product image"}</strong><div><button type="button" onClick={() => moveExistingImage(index, -1)} disabled={index === 0} aria-label={`Move image ${index + 1} up`}>↑</button><button type="button" onClick={() => moveExistingImage(index, 1)} disabled={index === retainedImages.length - 1} aria-label={`Move image ${index + 1} down`}>↓</button><button type="button" onClick={() => removeExistingImage(image.imageUrl)} aria-label={`Delete ${image.altText || `product image ${index + 1}`}`}>Delete</button></div></div></div>)}</div></div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div>  <aside className="stock-manager"><p className="eyebrow">Inventory</p><h2>{isSaree ? "Manage saree stock" : "Manage stocks"}</h2><p>{isSaree ? "Sarees do not have sizes. Set the total number available." : "Set independent stock and SKU values for each available size."}</p>{variants.map((variant, index) => <div className="variant-row" key={variant.size}><strong>{isSaree ? "Stock" : variant.size}</strong>{!isSaree && <input aria-label={`${variant.size} SKU`} placeholder="Variant SKU" value={variant.sku} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} />}<input aria-label={isSaree ? "Saree stock quantity" : `${variant.size} stock quantity`} type="number" min="0" step="1" value={variant.stockQuantity} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stockQuantity: Math.max(0, Number(event.target.value) || 0) } : item))} /></div>)}<p className="form-note">{isSaree ? "Customers can purchase this saree without selecting a size." : "Leave a SKU blank to omit that size. Customer pages show availability automatically."}</p></aside></div>;
+  return <div className="admin-content product-editor"><div><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" value={category} onChange={(event) => setCategory(event.target.value)} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><div className="field-row"><Field name="colorName" label="Color name" defaultValue={product?.colorName ?? ""} placeholder="e.g. Indigo" /><label className="field"><span>Color</span><div className="color-input"><input type="color" value={colorHex} onChange={(event) => setColorHex(event.target.value.toUpperCase())} aria-label="Product color" /><input name="colorHexText" type="text" value={colorHex} onChange={(event) => setColorHex(event.target.value.toUpperCase())} pattern="^#[0-9A-Fa-f]{6}$" aria-label="Color hex code" /></div></label></div><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{retainedImages.length > 0 && <div className="image-order-list"><span className="image-order-label">Current images · first image is the storefront image</span><div className="current-image-grid">{retainedImages.map((image, index) => <div className="current-image" key={image.storageKey ?? image.imageUrl}><img src={image.imageUrl} alt={image.altText || `Product image ${index + 1}`} /><div className="image-preview-meta"><strong>{index + 1}. {image.altText || "Product image"}</strong><div><button type="button" onClick={() => moveExistingImage(index, -1)} disabled={index === 0} aria-label={`Move image ${index + 1} up`}>↑</button><button type="button" onClick={() => moveExistingImage(index, 1)} disabled={index === retainedImages.length - 1} aria-label={`Move image ${index + 1} down`}>↓</button><button type="button" onClick={() => removeExistingImage(image.imageUrl)} aria-label={`Delete ${image.altText || `product image ${index + 1}`}`}>Delete</button></div></div></div>)}</div></div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div><aside className="stock-manager"><p className="eyebrow">Inventory</p><h2>{isSaree ? "Manage saree stock" : "Manage stocks"}</h2><p>{isSaree ? "Sarees do not have sizes. Set the total number available." : "Set independent stock and SKU values for each available size."}</p>{variants.map((variant, index) => <div className="variant-row" key={variant.size}><strong>{isSaree ? "Stock" : variant.size}</strong>{!isSaree && <input aria-label={`${variant.size} SKU`} placeholder="Variant SKU" value={variant.sku} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} />}<input aria-label={isSaree ? "Saree stock quantity" : `${variant.size} stock quantity`} type="number" min="0" step="1" value={variant.stockQuantity} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stockQuantity: Math.max(0, Number(event.target.value) || 0) } : item))} /></div>)}<p className="form-note">{isSaree ? "Customers can purchase this saree without selecting a size." : "Leave a SKU blank to omit that size. Customer pages show availability automatically."}</p></aside></div>;
 }

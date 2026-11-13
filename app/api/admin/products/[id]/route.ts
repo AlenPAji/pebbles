@@ -21,9 +21,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     name: String(form.get("name") ?? "").trim(),
     description: String(form.get("description") ?? "").trim(),
     category: String(form.get("category") ?? "").trim(),
+    colorName: String(form.get("colorName") ?? "").trim(),
+    colorHex: String(form.get("colorHex") ?? "").trim().toUpperCase(),
     price: String(form.get("price") ?? "").trim(),
   };
-  if (!input.sku || !input.name || !input.description || !input.category || !/^\d+(\.\d{1,2})?$/.test(input.price)) {
+  if (!input.sku || !input.name || !input.description || !input.category || !input.colorName || !/^#[0-9A-F]{6}$/.test(input.colorHex) || !/^\d+(\.\d{1,2})?$/.test(input.price)) {
     return NextResponse.json({ error: "Invalid product fields" }, { status: 400 });
   }
   let variants: ProductVariantInput[];

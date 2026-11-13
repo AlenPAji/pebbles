@@ -20,11 +20,16 @@ function productInput(form: FormData) {
   if (!/^\d+(\.\d{1,2})?$/.test(price)) {
     throw new Error("Invalid price");
   }
+  const colorName = text(form, "colorName");
+  const colorHex = text(form, "colorHex").toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(colorHex)) throw new Error("Color must use a valid six-digit hex code");
   return {
     sku: text(form, "sku"),
     name: text(form, "name"),
     description: text(form, "description"),
     category: text(form, "category"),
+    colorName,
+    colorHex,
     price
   };
 }
