@@ -9,7 +9,7 @@ async function backfillUsers() {
   const { clerkClient } = await import("@clerk/nextjs/server");
   const schema = await import("../server/db/schema");
   const usersTable = schema.users;
-  const databaseUrl = process.env.Postgres_URL;
+  const databaseUrl = process.env.POSTGRES_URL;
   if (!databaseUrl) throw new Error("Missing Postgres_URL environment variable");
 
   const db = drizzle(neon(databaseUrl));
