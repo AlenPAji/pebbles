@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "tsx --test tests/*.test.ts",
+    "test:neon": "tsx --test integration/variants.neon.ts",
     "test:product-variants": "tsx --test tests/product-variants.test.ts",
     "test:product-categories": "tsx --test tests/product-categories.test.ts",
     "db:generate": "drizzle-kit generate",
