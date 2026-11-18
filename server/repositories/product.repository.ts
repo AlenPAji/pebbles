@@ -6,6 +6,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { db } from "../db";
 import { orderAddresses, orderItems, orders, payments, productImages, products, productVariants, users } from "../db/schema";
 import { getProductImageUrl } from "../storage";
+import { countProductCategories, normalizeProductCategory, productCategoryFilterValues } from "../../app/lib/product-categories";
 
 export type ProductInput = {
   sku: string;
@@ -31,7 +32,7 @@ export type StoreProduct = {
 };
 
 function normalizeProductVariants(category: string | null, variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>) {
-  if (category?.trim().toLowerCase() !== "sarees") return variants;
+  if (normalizeProductCategory(category) !== "Sarees") return variants;
   return [{
     id: variants[0]?.id ?? "",
     size: "One Size",
@@ -65,7 +66,7 @@ async function withImageUrls(product: typeof products.$inferSelect): Promise<Sto
   return {
     id: product.id,
     name: product.name,
-    category: product.category ?? "Uncategorized",
+    category: normalizeProductCategory(product.category) || "Uncategorized",
     price: Number(product.price),
     description: product.description,
     colorName: product.colorName,
@@ -82,7 +83,7 @@ export async function listStoreProducts(options: { category?: string; color?: st
   const page = Math.max(1, options.page ?? 1);
   const filters = [isNull(products.deletedAt)];
   const category = options.category?.trim().toLowerCase();
-  if (category) filters.push(sql`lower(trim(${products.category})) = ${category}`);
+  if (category) filters.push(inArray(sql`lower(trim(${products.category}))`, productCategoryFilterValues(category)));
   const color = options.color?.trim().toLowerCase();
   if (color) filters.push(sql`lower(trim(${products.colorName})) = ${color}`);
   const size = options.size?.trim().toLowerCase();
@@ -151,6 +152,7 @@ export async function listProducts(options: { page?: number; pageSize?: number; 
       .limit(1);
     return {
       ...product,
+      category: normalizeProductCategory(product.category) || null,
       variants: normalizeProductVariants(product.category, await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size))),
       primaryImageUrl: image ? await getProductImageUrl(image.imageUrl) : null
     };
@@ -167,30 +169,7 @@ export async function listProductCategories() {
     .select({ category: products.category })
     .from(products)
     .where(and(isNull(products.deletedAt), sql`${products.category} is not null and trim(${products.category}) <> ''`));
-  const categoryCounts = new Map<string, number>();
-  for (const row of rows) {
-    const category = row.category?.trim();
-    if (!category) continue;
-    const normalized = category.toLowerCase();
-    const key = normalized === "kurta" || normalized === "kurtas"
-      ? "kurtas"
-      : normalized === "saree" || normalized === "sarees"
-        ? "sarees"
-        : normalized === "top" || normalized === "tops"
-          ? "tops"
-          : normalized;
-    categoryCounts.set(key, (categoryCounts.get(key) ?? 0) + 1);
-  }
-  for (const category of ["Kurtas", "Sarees", "Tops"]) {
-    const key = category.toLowerCase();
-    if (!categoryCounts.has(key)) categoryCounts.set(key, 0);
-  }
-  return Array.from(categoryCounts.entries())
-    .map(([category, productCount]) => ({
-      name: category.replace(/\b\w/g, (letter) => letter.toUpperCase()),
-      productCount
-    }))
-    .sort((first, second) => first.name.localeCompare(second.name));
+  return countProductCategories(rows.map((row) => row.category));
 }
 
 export async function findProduct(id: string) {
@@ -204,6 +183,7 @@ export async function findProduct(id: string) {
   const variants = await db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
   return {
     ...product,
+    category: normalizeProductCategory(product.category) || null,
     images,
     variants: normalizeProductVariants(product.category, variants.map((variant) => ({
       ...variant,
@@ -215,7 +195,7 @@ export async function findProduct(id: string) {
 export type ProductVariantInput = { size: string; sku: string; stockQuantity: number };
 
 export async function createProduct(input: ProductInput, images: Array<{ imageUrl: string; altText: string; sortOrder: number }>, variants: ProductVariantInput[]) {
-  const [product] = await db.insert(products).values(input).returning();
+  const [product] = await db.insert(products).values({ ...input, category: normalizeProductCategory(input.category) }).returning();
   if (images.length) {
     await db.insert(productImages).values(images.map((image) => ({ ...image, productId: product.id })));
   }
@@ -224,7 +204,7 @@ export async function createProduct(input: ProductInput, images: Array<{ imageUr
 }
 
 export async function updateProduct(id: string, input: ProductInput, images: Array<{ imageUrl: string; altText: string; sortOrder: number }>, variants: ProductVariantInput[]) {
-  const [product] = await db.update(products).set({ ...input, updatedAt: new Date() }).where(eq(products.id, id)).returning();
+  const [product] = await db.update(products).set({ ...input, category: normalizeProductCategory(input.category), updatedAt: new Date() }).where(eq(products.id, id)).returning();
   if (!product) return null;
   await db.delete(productImages).where(eq(productImages.productId, id));
   if (images.length) {

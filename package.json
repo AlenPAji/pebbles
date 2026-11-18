@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:product-variants": "tsx --test tests/product-variants.test.ts",
+    "test:product-categories": "tsx --test tests/product-categories.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:backfill-users": "tsx scripts/backfill-clerk-users.ts"
