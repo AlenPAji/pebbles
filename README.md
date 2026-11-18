@@ -103,6 +103,10 @@ Open [http://localhost:3000](http://localhost:3000) in a browser.
 Create a `.env.local` file in the project root. Never commit this file or
 expose server-only secrets in browser code.
 
+For the hosted application, configure these variables in the app dashboard's
+Secrets panel, then redeploy. `.env.local` is for local development; it does not
+configure the hosted runtime.
+
 ### Clerk
 
 ```dotenv
@@ -118,10 +122,10 @@ secret configured for that endpoint.
 ### Database
 
 ```dotenv
-Postgres_URL=postgresql://...
+POSTGRES_URL=postgresql://...
 ```
 
-`Postgres_URL` is case-sensitive and must use this exact spelling.
+`POSTGRES_URL` is case-sensitive and must use this exact spelling.
 
 ### Neon Object Storage
 
@@ -133,10 +137,21 @@ AWS_ENDPOINT_URL_S3=https://...
 AWS_REGION=...
 ```
 
-Create a Neon storage credential with read/write access and use a bucket named
-`products`. Uploaded images must be valid image files smaller than 5 MB.
+Create a bucket named `products` on the target Neon branch, or set
+`S3_BUCKET_NAME` to the exact name of another bucket you create there. Database
+migrations do not create storage buckets. Use storage credentials with write
+access valid for that branch, and copy the endpoint and region from Neon's
+storage connection settings. Set all five variables in the hosting Secrets
+panel and redeploy after changing them.
+
+Uploaded images must be valid image files smaller than 5 MB.
 Credentials stay on the server; the application generates signed URLs for
 displaying stored images.
+
+Product images are uploaded before the product row is inserted. A storage
+failure therefore prevents product creation and returns HTTP 502. The error
+identifies missing variable names or the storage/network error code and HTTP
+status, without including access keys or secret values.
 
 ### Razorpay
 
@@ -202,6 +217,52 @@ changing client-side navigation does not grant access.
 The canonical schema is in `server/db/schema.ts`. The database contains
 users, products, product variants, product images, orders, order items, order
 addresses, and payments.
+
+### Setting up a new deployment database
+
+Creating a Neon database and setting `POSTGRES_URL` does not create the app's
+tables. Apply the existing migrations before serving requests on GoDaddy,
+Vercel, or any other host.
+
+From the directory containing `package.json` and `drizzle.config.ts`, with
+`POSTGRES_URL` set to the new deployment database in that same shell:
+
+```bash
+npm ci --include=dev
+npm run db:migrate
+npm run build
+```
+
+Drizzle Kit is a development dependency, so it must be installed in the
+environment where migrations run. Include the `drizzle/` directory and its
+`meta/_journal.json` file. Drizzle Kit also loads `.env.local` if present;
+an existing shell variable takes precedence. Confirm the target is the new
+deployment database rather than the Vercel test database.
+
+After migrations succeed, restart the hosted application in production mode
+using `npm run start` (or the hosting provider's configured production startup).
+If the hosting shell cannot run migrations, run them from a local or CI checkout
+of the same release with `POSTGRES_URL` explicitly set to the deployment database.
+
+To verify in the Neon SQL Editor, select the same branch and database used by
+the app and run:
+
+```sql
+SELECT current_database(), to_regclass('public.products');
+SELECT count(*) FROM public.products WHERE deleted_at IS NULL;
+```
+
+An empty products table returns `0` without an error. Migrations create the
+schema; they do not copy products, users, orders, or images from the test setup.
+
+If a page reports `Failed query: select count(*) from "products" ...`, inspect
+the nested `cause` in the server log. PostgreSQL code `42P01` means a missing
+table, while `42703` means a missing column. The `products.deleted_at` column
+is added by migration `0006`; apply all pending migrations. If the schema is
+present, use the underlying error to check credentials or connectivity. Object
+Storage credentials do not affect this count query.
+
+### Changing the schema
 
 When changing the schema:
 

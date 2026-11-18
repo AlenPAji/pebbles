@@ -21,12 +21,19 @@ const storageConfig = {
 };
 
 function getStorageClient() {
-  if (!getBucket() || !storageConfig.region || !storageConfig.endpoint || !storageConfig.credentials.accessKeyId || !storageConfig.credentials.secretAccessKey) {
-    throw new Error("Neon Object Storage credentials are not configured");
+  const missingSettings = Object.entries({
+    S3_BUCKET_NAME: bucket,
+    AWS_REGION: storageConfig.region,
+    AWS_ENDPOINT_URL_S3: storageConfig.endpoint,
+    AWS_ACCESS_KEY_ID: storageConfig.credentials.accessKeyId,
+    AWS_SECRET_ACCESS_KEY: storageConfig.credentials.secretAccessKey
+  }).filter(([, value]) => !value).map(([name]) => name);
+  if (missingSettings.length) {
+    throw new Error(`Neon Object Storage configuration is missing: ${missingSettings.join(", ")}`);
   }
 
   try {
-    new URL(storageConfig.endpoint);
+    new URL(storageConfig.endpoint ?? "");
   } catch {
     throw new Error("Neon Object Storage endpoint is not a valid URL");
   }
@@ -35,15 +42,22 @@ function getStorageClient() {
 }
 
 function getBucket() {
-  if (!bucket) throw new Error("Neon Object Storage bucket is not configured");
+  if (!bucket) throw new Error("Neon Object Storage configuration is missing: S3_BUCKET_NAME");
   return bucket;
 }
 
 function storageError(error: unknown) {
   if (!(error instanceof Error)) return new Error("Neon Object Storage request failed");
-  const details = error as Error & { code?: string; name?: string };
+  if (error.message.startsWith("Neon Object Storage ")) return error;
+  const details = error as Error & {
+    code?: string;
+    cause?: { code?: string; name?: string };
+    $metadata?: { httpStatusCode?: number };
+  };
+  const code = details.code ?? details.cause?.code ?? (details.name !== "Error" ? details.name : details.cause?.name) ?? "unknown";
+  const status = details.$metadata?.httpStatusCode;
   const endpointHost = storageConfig.endpoint ? new URL(storageConfig.endpoint).hostname : "unknown";
-  return new Error(`Neon Object Storage request failed (${details.code ?? details.name ?? "unknown"} at ${endpointHost})`);
+  return new Error(`Neon Object Storage request failed (${code}${status ? `, HTTP ${status}` : ""} at ${endpointHost})`);
 }
 
 export async function uploadProductImage(key: string, body: Buffer, contentType: string) {

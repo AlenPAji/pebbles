@@ -128,10 +128,10 @@ the Clerk webhook endpoint.
 ### Required database variable
 
 ```dotenv
-Postgres_URL=postgresql://...
+POSTGRES_URL=postgresql://...
 ```
 
-The variable name is case-sensitive and must remain `Postgres_URL`.
+The variable name is case-sensitive and must remain `POSTGRES_URL`.
 
 ### Required object storage variables
 

@@ -25,11 +25,11 @@ browser to connect directly to PostgreSQL.
 | Migration tool | Drizzle Kit |
 | Schema source | `server/db/schema.ts` |
 | Migration directory | `drizzle/` |
-| Environment variable | `Postgres_URL` |
+| Environment variable | `POSTGRES_URL` |
 
 The database client is initialized in
 [`server/db/index.ts`](./server/db/index.ts). It is marked server-only and
-throws an error during startup when `Postgres_URL` is missing.
+throws an error during startup when `POSTGRES_URL` is missing.
 
 ## 3. Entity relationship overview
 
@@ -306,10 +306,10 @@ its migration metadata table.
 Set the connection string in `.env.local` for local work:
 
 ```dotenv
-Postgres_URL=postgresql://...
+POSTGRES_URL=postgresql://...
 ```
 
-`Postgres_URL` is case-sensitive. Keep it server-side and do not commit
+`POSTGRES_URL` is case-sensitive. Keep it server-side and do not commit
 `.env.local`. Drizzle Kit loads this file through
 [`drizzle.config.ts`](./drizzle.config.ts), while the application loads the
 same variable through [`server/db/index.ts`](./server/db/index.ts).
@@ -377,7 +377,7 @@ At minimum:
 - Monitor migration failures, connection errors, payment/order mismatches, and
   unexpected stock values.
 - Test restoring a non-production branch periodically.
-- Never log `Postgres_URL`, payment secrets, or complete customer addresses.
+- Never log `POSTGRES_URL`, payment secrets, or complete customer addresses.
 
 ## 12. Known database limitations
 
