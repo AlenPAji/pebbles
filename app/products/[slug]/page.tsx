@@ -3,7 +3,7 @@ import { findStoreProduct } from "../../../server/repositories/product.repositor
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
+export default async function ProductPage({ params, searchParams }: { params: { slug: string }; searchParams: {color?: string; size?: string} }) {
   const product = await findStoreProduct(params.slug);
-  return product ? <ProductDetail product={product} /> : <p className="empty-state">Product not found.</p>;
+  return product ? <ProductDetail key={[product.id,searchParams.color,searchParams.size].join("/")} product={product} initialColor={searchParams.color} initialSize={searchParams.size} /> : <p className="empty-state">Product not found.</p>;
 }
