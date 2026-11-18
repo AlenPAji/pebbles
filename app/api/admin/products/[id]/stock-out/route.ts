@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { findProduct, markProductOutOfStock } from "../../../../../../server/repositories/product.repository";
+import { archiveOrStockOut } from "../../../../../../server/repositories/catalog-write";
+import { catalogError } from "../../../../../../server/services/catalog-form";
 import { requireVendor } from "../../../../../../server/services/vendor.service";
 
 export async function POST(_: Request, { params }: { params: { id: string } }) {
   await requireVendor();
-  if (!await findProduct(params.id)) return NextResponse.json({ error: "Product not found" }, { status: 404 });
-  return NextResponse.json(await markProductOutOfStock(params.id));
+  try { return NextResponse.json(await archiveOrStockOut(params.id,false)); }
+  catch(error) { return catalogError(error); }
 }
