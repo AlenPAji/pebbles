@@ -5,9 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { mergeItem,updateCart } from "../lib/cart";
+import {useCart} from "../lib/use-cart";
+import {chooseColor, chooseSize} from "../lib/catalog-selection";
 import { money } from "../lib/format";
 import { normalizeProductCategory, productCategories } from "../lib/product-categories";
-import { initializeProductVariants, prepareProductVariants } from "../lib/product-variants";
+
 import { ScrollEditorial } from "./ScrollEditorial";
 import { ShopByVideo } from "./ShopByVideo";
 import { GoogleReviews } from "./GoogleReviews";
@@ -25,6 +28,13 @@ export type Product = {
   colorHex?: string | null;
   images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
   variants?: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
+  colors?: Array<{
+    id: string;
+    name: string;
+    hex: string | null;
+    images: NonNullable<Product["images"]>;
+    variants: Array<{ id: string; sku: string; size: string; stockQuantity: number; priceOverride: string | null }>;
+  }>;
   badge?: string;
 };
 
@@ -37,51 +47,8 @@ export const products: Product[] = [
   { id: "clay-wrap-top", name: "Clay Wrap Top", category: "Tops", price: 2190, image: "https://images.pexels.com/photos/1755428/pexels-photo-1755428.jpeg?auto=compress&cs=tinysrgb&w=900", description: "A softly structured wrap top in a warm clay tone, finished with fabric ties." }
 ];
 
-const cartQuantityKey = "pebbles-cart-quantity";
-const cartItemKey = "pebbles-cart-item";
-
-export type CartItem = {
-  productId: string;
-  variantId: string;
-  name: string;
-  size: string;
-  sku: string;
-  price: number;
-  quantity: number;
-};
-
-export function useCartCount() {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    const syncCount = () => setCount(Number(window.localStorage.getItem(cartQuantityKey) || 0));
-    syncCount();
-    window.addEventListener("storage", syncCount);
-    window.addEventListener("pebbles-cart-updated", syncCount);
-    return () => {
-      window.removeEventListener("storage", syncCount);
-      window.removeEventListener("pebbles-cart-updated", syncCount);
-    };
-  }, []);
-
-  return count;
-}
-
-export function addToCart(quantity = 1) {
-  const nextQuantity = Number(window.localStorage.getItem(cartQuantityKey) || 0) + quantity;
-  window.localStorage.setItem(cartQuantityKey, String(nextQuantity));
-  window.dispatchEvent(new Event("pebbles-cart-updated"));
-}
-
-export function setCartQuantity(quantity: number) {
-  if (quantity > 0) window.localStorage.setItem(cartQuantityKey, String(quantity));
-  else window.localStorage.removeItem(cartQuantityKey);
-  window.dispatchEvent(new Event("pebbles-cart-updated"));
-}
-
-export function setCartItem(item: CartItem) {
-  window.localStorage.setItem(cartItemKey, JSON.stringify(item));
-  setCartQuantity(item.quantity);
+function useCartCount() {
+  return useCart().reduce((count,line)=>count+line.quantity,0);
 }
 
 export function CartIcon() {
@@ -206,8 +173,16 @@ export function StoreShell({ children }: { children: ReactNode }) {
   return <><SiteHeader />{children}<SiteFooter /><MobileBottomNav /></>;
 }
 
-export function ProductCard({ product }: { product: Product }) {
-  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={`/products/${product.id}`} className="product-image-link" aria-label={`View ${product.name}`}>{product.image && <img src={product.image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={`/products/${product.id}`}><h3>{product.name}</h3></Link></div><strong>{money(product.price)}</strong></div></article>;
+export function ProductCard({ product, color, size }: { product: Product; color?: string; size?: string }) {
+  const swatch = chooseColor(product.colors ?? [], color, size);
+  const variant = chooseSize(swatch?.variants ?? [], size);
+  const image = swatch ? swatch.images[0]?.imageUrl : product.image;
+  const price = Number(variant?.priceOverride ?? product.price);
+  const query = new URLSearchParams();
+  if (swatch && (color || size)) query.set("color", swatch.id);
+  if (size && variant) query.set("size", variant.size);
+  const href = "/products/" + product.id + (query.size ? "?" + query : "");
+  return <article className="product-card"><div className="product-image product-image-large">{product.badge && <span className="badge">{product.badge}</span>}<Link href={href} className="product-image-link" aria-label={`View ${product.name}`}>{image && <img src={image} alt={product.name} />}</Link><button className="heart" type="button" aria-label={`Save ${product.name}`} onClick={() => undefined}>♡</button></div><div className="product-info"><div><p className="eyebrow">{product.category}</p><Link href={href}><h3>{product.name}</h3></Link></div><strong>{money(price)}</strong></div></article>;
 }
 
 function PromiseIcon({ type }: { type: "cashback" | "returns" | "shipping" | "payment" }) {
@@ -292,34 +267,58 @@ export function ProductListing({ products: listedProducts, category, color, size
     if (query?.trim()) search.set("query", query.trim());
     router.push(`/products${search.toString() ? `?${search}` : ""}`, { scroll: false });
   };
-  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" onSubmit={submitSearch}>  <div className="listing-search-field"><input name="query" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></div><div className="listing-filter-actions"><button className={`filter-toggle${filtersOpen ? " active" : ""}`} type="button" aria-expanded={filtersOpen} aria-controls="product-filters" onClick={() => setFiltersOpen((open) => !open)}>Filter products{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>}<span aria-hidden="true">⌄</span></button></div></form>{filtersOpen &&   <div className="product-filters" id="product-filters" aria-label="Product filters"><div className="product-filter-header"><span>Refine your results</span>{activeFilterCount > 0 && <button className="filter-clear" type="button" onClick={clearFilters}>Clear filters</button>}</div><div className="product-filter-group"><span className="product-filter-heading">Category</span><div className="filter-buttons">{["All", ...productCategories].map((item) =>   <Link scroll={false} onClick={() => setResultsLoading(true)} className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? undefined : item)}>{item}</Link>)}</div></div><label className="listing-filter"><span>Color</span>  <select value={color ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, event.target.value || undefined, size), { scroll: false }); }}><option value="">All colors</option>{colors.map((option) => <option value={option.name ?? ""} key={`${option.name}-${option.hex}`}>{option.name}</option>)}</select></label><label className="listing-filter"><span>Size</span>  <select value={size ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, color, event.target.value || undefined), { scroll: false }); }}><option value="">All sizes</option>{  ["M", "L", "XL", "XXL", "3XL", "One Size"].map((option) => <option value={option} key={option}>{option}</option>)}</select></label></div>}<div className={`product-results${resultsLoading ? " is-loading" : ""}`} aria-busy={resultsLoading}>{resultsLoading && <div className="product-results-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><span className="visually-hidden">Loading products</span></div>}<div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{!resultsLoading && !listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}</div>{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
+  return <StoreShell><PageIntro eyebrow="The collection" title={<>Dressed for <em>every day.</em></>} description="Kurtas, sarees and tops made with beautiful textiles and an easy point of view." /><section className="listing-section"><form className="listing-toolbar" onSubmit={submitSearch}>  <div className="listing-search-field"><input name="query" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder="Search products..." aria-label="Search products" /><button className="listing-search-button" type="submit">Search</button></div><div className="listing-filter-actions"><button className={`filter-toggle${filtersOpen ? " active" : ""}`} type="button" aria-expanded={filtersOpen} aria-controls="product-filters" onClick={() => setFiltersOpen((open) => !open)}>Filter products{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>}<span aria-hidden="true">⌄</span></button></div></form>{filtersOpen &&   <div className="product-filters" id="product-filters" aria-label="Product filters"><div className="product-filter-header"><span>Refine your results</span>{activeFilterCount > 0 && <button className="filter-clear" type="button" onClick={clearFilters}>Clear filters</button>}</div><div className="product-filter-group"><span className="product-filter-heading">Category</span><div className="filter-buttons">{["All", ...productCategories].map((item) =>   <Link scroll={false} onClick={() => setResultsLoading(true)} className={(activeCategory ?? "all") === item.toLowerCase() ? "active" : ""} key={item} href={params(1, item === "All" ? "" : item)}>{item}</Link>)}</div></div><label className="listing-filter"><span>Color</span>  <select value={color ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, event.target.value, size), { scroll: false }); }}><option value="">All colors</option>{colors.map((option) => <option value={option.name ?? ""} key={`${option.name}-${option.hex}`}>{option.name}</option>)}</select></label><label className="listing-filter"><span>Size</span>  <select value={size ?? ""} onChange={(event) => { setResultsLoading(true); router.push(params(1, category, color, event.target.value), { scroll: false }); }}><option value="">All sizes</option>{  ["M", "L", "XL", "XXL", "3XL", "One Size"].map((option) => <option value={option} key={option}>{option}</option>)}</select></label></div>}<div className={`product-results${resultsLoading ? " is-loading" : ""}`} aria-busy={resultsLoading}>{resultsLoading && <div className="product-results-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><span className="visually-hidden">Loading products</span></div>}<div className="product-grid product-grid-list">{listedProducts.map((product) => <ProductCard key={product.id} product={product} color={color} size={size} />)}</div>{!resultsLoading && !listedProducts.length && <p className="empty-state">No pieces found. Try another search.</p>}</div>{totalPages > 1 && <nav className="pagination" aria-label="Product pages">{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={params(number)} key={number}>{number}</Link>)}</nav>}</section></StoreShell>;
 }
 
-export function ProductDetail({ product }: { product: Product }) {
+export function ProductDetail({ product, initialColor, initialSize }: { product: Product; initialColor?: string; initialSize?: string }) {
   const [added, setAdded] = useState(false);
-  const variants = product.variants ?? [];
-  const isSaree = product.category.toLowerCase() === "sarees";
-  const [selectedSize, setSelectedSize] = useState(variants[0]?.size ?? "");
-  const selectedVariant = variants.find((variant) => variant.size === selectedSize);
-  const requireAuth = useRequireAuth();
-  const addProductToCart = async () => {
-    if (!(await requireAuth())) return;
-    if (!selectedSize || !variants.find((variant) => variant.size === selectedSize && variant.stockQuantity > 0)) return;
-    setCartItem({
-      productId: product.id,
-      variantId: selectedVariant?.id ?? "",
-      name: product.name,
-      size: isSaree ? "One Size" : selectedSize,
-      sku: selectedVariant?.sku ?? "",
-      price: product.price,
-      quantity: 1
-    });
+  const colors=product.colors ?? [];
+  const [colorId,setColorId]=useState(chooseColor(colors, initialColor, initialSize)?.id ?? "");
+  const color=colors.find(c=>c.id===colorId);
+  const variants=color?.variants ?? [];
+  const [size,setSize]=useState(initialSize ?? "");
+  const selectedVariant=chooseSize(variants,size);
+  const selectedSize=selectedVariant?.size ?? "";
+  const price=Number(selectedVariant?.priceOverride ?? product.price);
+  const isSaree=variants.length===1 && variants[0].size==="One Size";
+  const requireAuth=useRequireAuth();
+  const addProductToCart=async ()=>{
+    if(!selectedVariant || !color || !(await requireAuth())) return;
+    updateCart(items=>mergeItem(items,{productId:product.id,variantId:selectedVariant.id,name:product.name,
+      colorName:color.name,size:selectedSize,sku:selectedVariant.sku,price,quantity:1}));
     setAdded(true);
   };
-  const gallery = product.images?.length ? product.images : product.image ? [{ imageUrl: product.image, altText: product.name, sortOrder: 0 }] : [];
+  const gallery=color?.images ?? [];
   const [selectedImage, setSelectedImage] = useState(gallery[0]?.imageUrl ?? "");
   const currentImage = gallery.find((image) => image.imageUrl === selectedImage) ?? gallery[0];
-  return <StoreShell><main className="detail-page"><div className="detail-gallery"><div className="detail-image">{currentImage ? <img src={currentImage.imageUrl} alt={currentImage.altText ?? product.name} /> : <span className="detail-image-empty">Image coming soon</span>}</div>{gallery.length > 1 && <div className="detail-thumbnails" aria-label="Product images">{gallery.map((image, index) => <button type="button" className={currentImage?.imageUrl === image.imageUrl ? "active" : ""} key={image.imageUrl} onClick={() => setSelectedImage(image.imageUrl)} aria-label={`View image ${index + 1}`}><img src={image.imageUrl} alt="" /></button>)}</div>}</div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(product.price)}</p><p className="detail-description">{product.description}</p><div className="detail-divider" />{isSaree ? <p className="form-note">One size · {variants[0]?.stockQuantity ?? 0} available</p> : <><div className="size-label"><span>Select size</span></div><div className="size-options" role="radiogroup" aria-label="Available sizes">{variants.map((variant) => <button type="button" role="radio" aria-checked={selectedSize === variant.size} aria-label={`${variant.size}, ${variant.stockQuantity > 0 ? `${variant.stockQuantity} available` : "sold out"}`} key={variant.size} className={`${selectedSize === variant.size ? "active" : ""} ${variant.stockQuantity === 0 ? "sold-out" : ""}`} disabled={variant.stockQuantity === 0} onClick={() => setSelectedSize(variant.size)}><strong>{variant.size}</strong><small>{variant.stockQuantity > 0 ? `${variant.stockQuantity} left` : "Sold out"}</small></button>)}</div>{!variants.length && <p className="form-note">Sizes are currently unavailable.</p>}</>}<button className="button dark-button add-button" disabled={!selectedSize || !variants.find((variant) => variant.size === selectedSize && variant.stockQuantity > 0)} onClick={addProductToCart}>{added ? "Added to bag ✓" : "Add to bag"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b><span>100% cotton, naturally dyed</span></p><p><b>Care</b><span>Gentle machine wash, dry in shade</span></p><p><b>Delivery</b><span>Ships within 2–4 business days</span></p></div></div></main></StoreShell>;
+  return <StoreShell><main className="detail-page"><div className="detail-gallery"><div className="detail-image">{currentImage ? <img src={currentImage.imageUrl} alt={currentImage.altText ?? product.name} /> : <span className="detail-image-empty">Image coming soon</span>}</div>{gallery.length > 1 && <div className="detail-thumbnails" aria-label="Product images">{gallery.map((image, index) => <button type="button" className={currentImage?.imageUrl === image.imageUrl ? "active" : ""} key={image.imageUrl} onClick={() => setSelectedImage(image.imageUrl)} aria-label={`View image ${index + 1}`}><img src={image.imageUrl} alt="" /></button>)}</div>}</div><div className="detail-copy"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">{money(price)}</p><p className="detail-description">{product.description}</p><div className="detail-divider" />{color && (
+    <fieldset className="detail-colours">
+      <legend>Colour: {color.name}</legend>
+      <div className="detail-colour-options">
+        {colors.map(option => (
+          <label key={option.id} className="detail-colour-option" title={option.name}>
+            <input
+              className="visually-hidden"
+              type="radio"
+              name="product-colour"
+              aria-label={option.name}
+              value={option.id}
+              checked={option.id === colorId}
+              onChange={() => {
+                setColorId(option.id);
+                setSize("");
+                setAdded(false);
+                setSelectedImage("");
+              }}
+            />
+            <span className="detail-colour-chip" style={{ backgroundColor: option.hex ?? undefined }} aria-hidden="true">
+              {option.hex ? null : option.name.slice(0, 1).toUpperCase()}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )}{isSaree ? <p className="form-note">One size · {variants[0]?.stockQuantity ?? 0} available</p> : <><div className="size-label"><span>Select size</span></div><div className="size-options" role="radiogroup" aria-label="Available sizes">{variants.map((variant) => <button type="button" role="radio" aria-checked={selectedSize === variant.size} aria-label={`${variant.size}, ${variant.stockQuantity > 0 ? `${variant.stockQuantity} available` : "sold out"}`} key={variant.size} className={`${selectedSize === variant.size ? "active" : ""} ${variant.stockQuantity === 0 ? "sold-out" : ""}`} disabled={variant.stockQuantity === 0} onClick={() => {setSize(variant.size);setAdded(false);}}><strong>{variant.size}</strong><small>{variant.stockQuantity > 0 ? `${variant.stockQuantity} left` : "Sold out"}</small></button>)}</div>{!variants.length && <p className="form-note">Sizes are currently unavailable.</p>}</>}<button className="button dark-button add-button" disabled={!selectedVariant} onClick={addProductToCart}>{added ? "Added to bag ✓" : "Add to bag"} <span>↗</span></button><div className="detail-notes"><p><b>Material</b><span>100% cotton, naturally dyed</span></p><p><b>Care</b><span>Gentle machine wash, dry in shade</span></p><p><b>Delivery</b><span>Ships within 2–4 business days</span></p></div></div></main></StoreShell>;
 }
 
 export function SimpleForm({ title, button, children, note }: { title: ReactNode; button: string; children: ReactNode; note?: string }) {
@@ -352,7 +351,7 @@ type AdminProduct = {
   colorName: string | null;
   colorHex: string | null;
   price: string;
-  variants: Array<{ id?: string; size: string; sku: string; stockQuantity: number }>;
+  variants: Array<{ id?: string; size: string; sku: string; stockQuantity: number; colorName?: string }>;
   images?: Array<{ id?: string; imageUrl: string; storageKey?: string; altText: string | null; sortOrder: number }>;
   primaryImageUrl?: string | null;
 };
@@ -412,14 +411,13 @@ export function ProductAdminTable({ page = 1, initialQuery = "" }: { page?: numb
     if (!window.confirm(`Set every size of "${product.name}" to out of stock?`)) return;
     const response = await fetch(`/api/admin/products/${product.id}/stock-out`, { method: "POST", cache: "no-store" });
     if (!response.ok) {
-      setError("Unable to update product stock");
+      setError((await response.json().catch(()=>({}))).error ?? "Unable to update product stock");
       return;
     }
-    const variants = await response.json() as AdminProduct["variants"];
-    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants: variants.map((variant) => ({ ...variant, stockQuantity: 0 })) } : item));
+    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, variants: item.variants.map((variant) => ({ ...variant, stockQuantity: 0 })) } : item));
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}<label className="admin-search"><span>Search products</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or SKU" aria-describedby="product-search-hint" /><small id="product-search-hint">Results update as you type</small></label>{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Color</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td><span className="admin-color-swatch" style={{ backgroundColor: product.colorHex ?? "#D8D6CF" }} aria-label={product.colorName ?? "No color"} />{product.colorName ?? "—"}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">{debouncedQuery ? "No products match your search." : "No products yet."}</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.max(1, (debouncedQuery ? 1 : page) - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === (debouncedQuery ? 1 : page) ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.min(totalPages, (debouncedQuery ? 1 : page) + 1))}>Next</Link></nav>}</>}</div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{message && <p className="form-note" role="status">{message}</p>}<label className="admin-search"><span>Search products</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or SKU" aria-describedby="product-search-hint" /><small id="product-search-hint">Results update as you type</small></label>{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading products...</p></div> : <><table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Color</th><th>Price</th><th>Stock by size</th><th>Action</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="admin-product-cell">{product.primaryImageUrl ? <img className="admin-product-thumb" src={product.primaryImageUrl} alt="" /> : <span className="admin-product-thumb admin-product-thumb-empty">—</span>}<span>{product.name}</span></div></td><td>{product.sku}</td><td>{product.category}</td><td><span className="admin-color-swatch" style={{ backgroundColor: product.colorHex ?? "#D8D6CF" }} aria-label={product.colorName ?? "No color"} />{product.colorName ?? "—"}</td><td>{money(Number(product.price))}</td><td>{product.variants.map((variant) => `${variant.colorName ?? ""} ${variant.size}: ${variant.stockQuantity}`).join(" · ") || "—"}</td><td><div className="admin-product-actions"><Link className="table-action table-action-edit" href={`/admin/products/${product.id}/edit`}>Edit</Link><button className="table-action" type="button" disabled={!product.variants.some((variant) => variant.stockQuantity > 0)} onClick={() => void stockOut(product)}>Stock out</button><button className="table-action table-action-delete" type="button" onClick={() => void remove(product.id)}>Delete</button></div></td></tr>)}</tbody></table>{!products.length && <p className="empty-state">{debouncedQuery ? "No products match your search." : "No products yet."}</p>}{products.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Product pages"><Link className={page === 1 && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.max(1, (debouncedQuery ? 1 : page) - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === (debouncedQuery ? 1 : page) ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages && !debouncedQuery ? "disabled" : ""} href={pageHref(Math.min(totalPages, (debouncedQuery ? 1 : page) + 1))}>Next</Link></nav>}</>}</div>;
 }
 
 type AdminOrder = {
@@ -427,7 +425,7 @@ type AdminOrder = {
   status: string;
   totalAmount: string;
   createdAt: string;
-  items: Array<{ productName: string; size: string; quantity: number }>;
+  items: Array<{ productName: string; size: string; quantity: number; colorName?: string | null }>;
 };
 
 export function OrderAdminTable({ page = 1, status, from, to }: { page?: number; status?: string; from?: string; to?: string }) {
@@ -460,107 +458,5 @@ export function OrderAdminTable({ page = 1, status, from, to }: { page?: number;
     return `/admin/orders?${params}`;
   };
 
-  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading orders...</p></div> : <><table className="admin-orders-table"><thead><tr><th>Order</th><th>Items</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td>#{order.id.slice(0, 8).toUpperCase()}<small className="admin-order-date">{new Date(order.createdAt).toLocaleDateString("en-IN")}</small></td><td>{order.items.map((item) => `${item.productName} · Size ${item.size} ×${item.quantity}`).join(", ")}</td><td>₹{Number(order.totalAmount).toLocaleString("en-IN")}</td><td><span className={`status ${order.status}`}>{order.status.replace("_", " ")}</span></td><td><Link className="table-action" href={`/admin/orders/${order.id}`}>View details →</Link></td></tr>)}</tbody></table>{!orders.length && <p className="empty-state">No orders match these filters.</p>}{orders.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Order pages"><Link className={page === 1 ? "disabled" : ""} href={pageHref(Math.max(1, page - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, page + 1))}>Next</Link></nav>}</>}</div>;
-}
-
-export function ProductForm({ title, button, product }: { title: string; button: string; product?: AdminProduct }) {
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [retainedImages, setRetainedImages] = useState(() => product?.images ?? []);
-  const [category, setCategory] = useState(normalizeProductCategory(product?.category));
-  const [colorHex, setColorHex] = useState(product?.colorHex ?? "#182B3D");
-  const isSaree = category.toLowerCase() === "sarees";
-  const [variants, setVariants] = useState(() => initializeProductVariants(product?.variants, isSaree));
-
-  useEffect(() => {
-    if (isSaree) {
-      setVariants((current) => initializeProductVariants(current, true));
-    } else if (variants.length === 1 && variants[0].size === "One Size") {
-      setVariants(initializeProductVariants());
-    }
-  }, [isSaree]);
-
-  useEffect(() => {
-    const nextPreviews = selectedFiles.map((file) => URL.createObjectURL(file));
-    setPreviews(nextPreviews);
-    return () => nextPreviews.forEach((preview) => URL.revokeObjectURL(preview));
-  }, [selectedFiles]);
-
-  const addFiles = (files: FileList | null) => {
-    if (!files) return;
-    const validFiles = Array.from(files).filter((file) => file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024);
-    if (validFiles.length !== files.length) {
-      setError("Images must be image files smaller than 5MB.");
-    }
-    if (validFiles.length) {
-      setSelectedFiles((current) => [...current, ...validFiles]);
-    }
-  };
-
-  const moveFile = (index: number, direction: -1 | 1) => {
-    setSelectedFiles((current) => {
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
-    });
-  };
-
-  const removeFile = (index: number) => {
-    setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
-  };
-
-  const removeExistingImage = (imageUrl: string) => {
-    setRetainedImages((current) => current.filter((image) => image.imageUrl !== imageUrl));
-  };
-
-  const moveExistingImage = (index: number, direction: -1 | 1) => {
-    setRetainedImages((current) => {
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
-    });
-  };
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    const formData = new FormData(event.currentTarget);
-    formData.set("colorHex", colorHex);
-    const submittedVariants = prepareProductVariants(String(formData.get("sku") ?? ""), variants, isSaree);
-    formData.set("variants", JSON.stringify(submittedVariants));
-    if (product) {
-      formData.set("retainedImages", JSON.stringify(retainedImages.map(({ storageKey, imageUrl, altText }) => ({
-        imageUrl: storageKey ?? imageUrl,
-        altText: altText ?? "",
-        sortOrder: 0
-      }))));
-    }
-    formData.delete("images");
-    selectedFiles.forEach((file) => formData.append("images", file));
-    try {
-      const response = await fetch(product ? `/api/admin/products/${product.id}` : "/api/admin/products", {
-        method: product ? "PATCH" : "POST",
-        body: formData
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        setError(body.error ?? "Unable to save product");
-        setSaving(false);
-        return;
-      }
-      window.location.href = "/admin/products";
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Unable to save product");
-      setSaving(false);
-    }
-  };
-
-  return <div className="admin-content product-editor"><div><p className="eyebrow">Products</p><h1>{title}</h1>{error && <p className="form-error">{error}</p>}<form className="admin-form" onSubmit={submit}><Field name="name" label="Product name" defaultValue={product?.name} /><Field name="sku" label="SKU" defaultValue={product?.sku} /><div className="field-row"><label className="field"><span>Category</span><select name="category" value={category} onChange={(event) => setCategory(event.target.value)} required><option value="" disabled>Select a category</option>{productCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><Field name="price" label="Price (₹)" defaultValue={product?.price} /></div><div className="field-row"><Field name="colorName" label="Color name" defaultValue={product?.colorName ?? ""} placeholder="e.g. Indigo" /><label className="field"><span>Color</span><div className="color-input"><input type="color" value={colorHex} onChange={(event) => setColorHex(event.target.value.toUpperCase())} aria-label="Product color" /><input name="colorHexText" type="text" value={colorHex} onChange={(event) => setColorHex(event.target.value.toUpperCase())} pattern="^#[0-9A-Fa-f]{6}$" aria-label="Color hex code" /></div></label></div><label className="field"><span>Description</span><textarea name="description" rows={5} defaultValue={product?.description} required /></label>{retainedImages.length > 0 && <div className="image-order-list"><span className="image-order-label">Current images · first image is the storefront image</span><div className="current-image-grid">{retainedImages.map((image, index) => <div className="current-image" key={image.storageKey ?? image.imageUrl}><img src={image.imageUrl} alt={image.altText || `Product image ${index + 1}`} /><div className="image-preview-meta"><strong>{index + 1}. {image.altText || "Product image"}</strong><div><button type="button" onClick={() => moveExistingImage(index, -1)} disabled={index === 0} aria-label={`Move image ${index + 1} up`}>↑</button><button type="button" onClick={() => moveExistingImage(index, 1)} disabled={index === retainedImages.length - 1} aria-label={`Move image ${index + 1} down`}>↓</button><button type="button" onClick={() => removeExistingImage(image.imageUrl)} aria-label={`Delete ${image.altText || `product image ${index + 1}`}`}>Delete</button></div></div></div>)}</div></div>}<label className="upload-box" htmlFor="product-images">＋<span>Add product images</span><small>PNG or JPG up to 5MB; choose multiple files</small><input id="product-images" name="images" type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = ""; }} /></label>{selectedFiles.length > 0 && <div className="selected-images"><span className="image-order-label">New image order</span><div className="image-preview-grid">{selectedFiles.map((file, index) => <div className="image-preview" key={`${file.name}-${file.lastModified}-${index}`}><img src={previews[index]} alt="" /><div className="image-preview-meta"><strong>{index + 1}. {file.name}</strong><div><button type="button" onClick={() => moveFile(index, -1)} disabled={index === 0} aria-label={`Move ${file.name} up`}>↑</button><button type="button" onClick={() => moveFile(index, 1)} disabled={index === selectedFiles.length - 1} aria-label={`Move ${file.name} down`}>↓</button><button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>×</button></div></div></div>)}</div></div>}<button className="admin-button" type="submit" disabled={saving}>{saving ? "Saving..." : button} →</button></form></div><aside className="stock-manager"><p className="eyebrow">Inventory</p><h2>{isSaree ? "Manage saree stock" : "Manage stocks"}</h2><p>{isSaree ? "Sarees do not have sizes. Set the total number available." : "Set stock for each available size. You can optionally provide a custom SKU."}</p>{variants.map((variant, index) => <div className="variant-row" key={variant.size}><strong>{isSaree ? "Stock" : variant.size}</strong>{!isSaree && <input aria-label={`${variant.size} SKU`} placeholder="Variant SKU" value={variant.sku} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} />}<input aria-label={isSaree ? "Saree stock quantity" : `${variant.size} stock quantity`} type="number" min="0" step="1" value={variant.stockQuantity} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stockQuantity: Math.max(0, Number(event.target.value) || 0) } : item))} /></div>)}<p className="form-note">{isSaree ? "Customers can purchase this saree without selecting a size." : "Sizes with stock receive an automatic SKU when left blank. Leave SKU blank and stock at zero to omit a size."}</p></aside></div>;
+  return <div className="admin-table-wrap">{error && <p className="form-error">{error}</p>}{loading ? <div className="table-loading" role="status" aria-live="polite"><div className="loading-mark" aria-hidden="true"><span /><span /><span /></div><p>Loading orders...</p></div> : <><table className="admin-orders-table"><thead><tr><th>Order</th><th>Items</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td>#{order.id.slice(0, 8).toUpperCase()}<small className="admin-order-date">{new Date(order.createdAt).toLocaleDateString("en-IN")}</small></td><td>{order.items.map((item) => [item.productName,item.colorName,`${item.size} ×${item.quantity}`].filter(Boolean).join(" · ")).join(", ")}</td><td>₹{Number(order.totalAmount).toLocaleString("en-IN")}</td><td><span className={`status ${order.status}`}>{order.status.replace("_", " ")}</span></td><td><Link className="table-action" href={`/admin/orders/${order.id}`}>View details →</Link></td></tr>)}</tbody></table>{!orders.length && <p className="empty-state">No orders match these filters.</p>}{orders.length > 0 && totalPages > 1 && <nav className="pagination" aria-label="Order pages"><Link className={page === 1 ? "disabled" : ""} href={pageHref(Math.max(1, page - 1))}>Previous</Link>{Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => <Link className={number === page ? "active" : ""} href={pageHref(number)} key={number}>{number}</Link>)}<Link className={page === totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, page + 1))}>Next</Link></nav>}</>}</div>;
 }

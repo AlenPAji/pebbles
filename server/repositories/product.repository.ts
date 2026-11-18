@@ -1,81 +1,43 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql, sum } from "drizzle-orm";
+import { and, asc, count, getTableColumns, desc, eq, gte, inArray, isNull, lte, sql, sum } from "drizzle-orm";
 import { unstable_noStore as noStore } from "next/cache";
 
+import { availableStock } from "./inventory";
 import { db } from "../db";
-import { orderAddresses, orderItems, orders, payments, productImages, products, productVariants, users } from "../db/schema";
+import { orderAddresses, orderItems, orders, paymentReviews, productColors, productImages, products, productVariants, users } from "../db/schema";
 import { getProductImageUrl } from "../storage";
 import { countProductCategories, normalizeProductCategory, productCategoryFilterValues } from "../../app/lib/product-categories";
 
-export type ProductInput = {
-  sku: string;
-  name: string;
-  description: string;
-  category: string;
-  colorName: string;
-  colorHex: string;
-  price: string;
-};
-
-export type StoreProduct = {
-  id: string;
-  name: string;
-  category: string;
-  price: number;
-  description: string;
-  colorName: string | null;
-  colorHex: string | null;
-  image: string;
-  images: Array<{ imageUrl: string; altText: string | null; sortOrder: number }>;
-  variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>;
-};
-
-function normalizeProductVariants(category: string | null, variants: Array<{ id: string; size: string; sku: string; stockQuantity: number }>) {
-  if (normalizeProductCategory(category) !== "Sarees") return variants;
-  return [{
-    id: variants[0]?.id ?? "",
-    size: "One Size",
-    sku: variants[0]?.sku ?? "",
-    stockQuantity: variants.reduce((total, variant) => total + Number(variant.stockQuantity), 0)
-  }];
+async function catalogDetails(productId: string, storefront: boolean) {
+  const [colors, variants, images] = await Promise.all([
+    db.select().from(productColors).where(and(eq(productColors.productId, productId), isNull(productColors.deletedAt)))
+      .orderBy(desc(productColors.isDefault), asc(productColors.sortOrder)),
+    db.select({ ...getTableColumns(productVariants), ...(storefront ? { stockQuantity: availableStock } : {}) })
+      .from(productVariants).where(and(eq(productVariants.productId, productId), isNull(productVariants.deletedAt))).orderBy(asc(productVariants.size)),
+    db.select().from(productImages).where(and(eq(productImages.productId, productId), isNull(productImages.deletedAt))).orderBy(asc(productImages.sortOrder))
+  ]);
+  const gallery = await Promise.all(images.map(async image => {
+    if (!storefront) return image;
+    try { return { ...image, imageUrl: await getProductImageUrl(image.imageUrl) }; }
+    catch { console.error("Unable to sign product image", image.id); return null; }
+  }));
+  return colors.map(color => ({
+    ...color,
+    variants: variants.filter(v => v.productColorId === color.id),
+    images: gallery.filter((i): i is typeof images[number] => i !== null && i.productColorId === color.id)
+  }));
 }
 
-async function resolveProductImage(image: typeof productImages.$inferSelect) {
-  try {
-    return {
-      ...image,
-      imageUrl: await getProductImageUrl(image.imageUrl)
-    };
-  } catch (error) {
-    console.error(`Unable to load image for product ${image.productId}.`, error);
-    return null;
-  }
+async function withImageUrls(product: typeof products.$inferSelect) {
+  const colors = await catalogDetails(product.id, true);
+  const primary = colors[0];
+  return { ...product, category: normalizeProductCategory(product.category) || "Uncategorized",
+    price: Number(product.price), image: primary?.images[0]?.imageUrl ?? "",
+    images: primary?.images ?? [], variants: primary?.variants ?? [], colors };
 }
 
-async function withImageUrls(product: typeof products.$inferSelect): Promise<StoreProduct> {
-  const images = await db
-    .select()
-    .from(productImages)
-    .where(eq(productImages.productId, product.id))
-    .orderBy(asc(productImages.sortOrder));
-  const imagesWithUrls = (await Promise.all(images.map(resolveProductImage))).filter(
-    (image): image is NonNullable<typeof image> => image !== null
-  );
-  const variants = normalizeProductVariants(product.category, await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size)));
-  return {
-    id: product.id,
-    name: product.name,
-    category: normalizeProductCategory(product.category) || "Uncategorized",
-    price: Number(product.price),
-    description: product.description,
-    colorName: product.colorName,
-    colorHex: product.colorHex,
-    image: imagesWithUrls[0]?.imageUrl ?? "",
-    images: imagesWithUrls,
-    variants
-  };
-}
+export type StoreProduct = Awaited<ReturnType<typeof withImageUrls>>;
 
 export async function listStoreProducts(options: { category?: string; color?: string; size?: string; query?: string; page?: number; pageSize?: number } = {}) {
   noStore();
@@ -85,9 +47,13 @@ export async function listStoreProducts(options: { category?: string; color?: st
   const category = options.category?.trim().toLowerCase();
   if (category) filters.push(inArray(sql`lower(trim(${products.category}))`, productCategoryFilterValues(category)));
   const color = options.color?.trim().toLowerCase();
-  if (color) filters.push(sql`lower(trim(${products.colorName})) = ${color}`);
   const size = options.size?.trim().toLowerCase();
-  if (size) filters.push(sql`exists (select 1 from ${productVariants} where ${productVariants.productId} = ${products.id} and lower(trim(${productVariants.size})) = ${size} and ${productVariants.stockQuantity} > 0)`);
+  if (color || size) filters.push(sql`exists (select 1 from ${productColors}
+    where ${productColors.productId} = ${products.id} and ${productColors.deletedAt} is null
+      ${color ? sql`and lower(trim(${productColors.name})) = ${color}` : sql``}
+      ${size ? sql`and exists (select 1 from ${productVariants}
+        where ${productVariants.productColorId} = ${productColors.id} and ${productVariants.deletedAt} is null
+        and lower(trim(${productVariants.size})) = ${size} and ${availableStock} > 0)` : sql``})`);
   if (options.query) filters.push(sql`lower(${products.name}) like ${`%${options.query.toLowerCase()}%`}`);
   const where = filters.length ? and(...filters) : undefined;
   const [rows, [{ total }]] = await Promise.all([
@@ -104,11 +70,10 @@ export async function listStoreProducts(options: { category?: string; color?: st
 }
 
 export async function listProductColors() {
-  return db.select({ name: products.colorName, hex: products.colorHex })
-    .from(products)
-    .where(and(isNull(products.deletedAt), sql`${products.colorName} is not null and trim(${products.colorName}) <> ''`))
-    .groupBy(products.colorName, products.colorHex)
-    .orderBy(asc(products.colorName));
+  return db.select({ name: productColors.name, hex: productColors.hex }).from(productColors)
+    .innerJoin(products, eq(productColors.productId, products.id))
+    .where(and(isNull(products.deletedAt), isNull(productColors.deletedAt)))
+    .groupBy(productColors.name, productColors.hex).orderBy(asc(productColors.name));
 }
 
 export async function findStoreProduct(id: string) {
@@ -133,7 +98,7 @@ export async function listProducts(options: { page?: number; pageSize?: number; 
             select 1
             from ${productVariants}
             where ${productVariants.productId} = ${products.id}
-              and lower(${productVariants.sku}) like ${`%${query}%`}
+              and ${productVariants.deletedAt} is null and lower(${productVariants.sku}) like ${`%${query}%`}
           )
         )`
       : undefined
@@ -144,18 +109,11 @@ export async function listProducts(options: { page?: number; pageSize?: number; 
   ]);
   return {
     products: await Promise.all(productRows.map(async (product) => {
-    const [image] = await db
-      .select()
-      .from(productImages)
-      .where(eq(productImages.productId, product.id))
-      .orderBy(asc(productImages.sortOrder))
-      .limit(1);
-    return {
-      ...product,
-      category: normalizeProductCategory(product.category) || null,
-      variants: normalizeProductVariants(product.category, await db.select().from(productVariants).where(eq(productVariants.productId, product.id)).orderBy(asc(productVariants.size))),
-      primaryImageUrl: image ? await getProductImageUrl(image.imageUrl) : null
-    };
+      const colors = await catalogDetails(product.id, false);
+      const image = colors[0]?.images[0];
+      return { ...product, category: normalizeProductCategory(product.category) || null, colors,
+        variants: colors.flatMap(c => c.variants.map(v => ({ ...v, colorName: c.name }))),
+        primaryImageUrl: image ? await getProductImageUrl(image.imageUrl) : null };
     })),
     total: Number(total),
     page,
@@ -175,159 +133,14 @@ export async function listProductCategories() {
 export async function findProduct(id: string) {
   const [product] = await db.select().from(products).where(and(eq(products.id, id), isNull(products.deletedAt))).limit(1);
   if (!product) return null;
-  const images = await db
-    .select()
-    .from(productImages)
-    .where(eq(productImages.productId, id))
-    .orderBy(asc(productImages.sortOrder));
-  const variants = await db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
-  return {
-    ...product,
-    category: normalizeProductCategory(product.category) || null,
-    images,
-    variants: normalizeProductVariants(product.category, variants.map((variant) => ({
-      ...variant,
-      stockQuantity: Number(variant.stockQuantity)
-    })))
-  };
-}
-
-export type ProductVariantInput = { size: string; sku: string; stockQuantity: number };
-
-export async function createProduct(input: ProductInput, images: Array<{ imageUrl: string; altText: string; sortOrder: number }>, variants: ProductVariantInput[]) {
-  const [product] = await db.insert(products).values({ ...input, category: normalizeProductCategory(input.category) }).returning();
-  if (images.length) {
-    await db.insert(productImages).values(images.map((image) => ({ ...image, productId: product.id })));
-  }
-  if (variants.length) await db.insert(productVariants).values(variants.map((variant) => ({ ...variant, productId: product.id })));
-  return product;
-}
-
-export async function updateProduct(id: string, input: ProductInput, images: Array<{ imageUrl: string; altText: string; sortOrder: number }>, variants: ProductVariantInput[]) {
-  const [product] = await db.update(products).set({ ...input, category: normalizeProductCategory(input.category), updatedAt: new Date() }).where(eq(products.id, id)).returning();
-  if (!product) return null;
-  await db.delete(productImages).where(eq(productImages.productId, id));
-  if (images.length) {
-    await db.insert(productImages).values(images.map((image) => ({ ...image, productId: id })));
-  }
-  await db.delete(productVariants).where(eq(productVariants.productId, id));
-  if (variants.length) await db.insert(productVariants).values(variants.map((variant) => ({ ...variant, productId: id })));
-  return product;
-}
-
-export async function updateProductVariants(id: string, variants: ProductVariantInput[]) {
-  await db.delete(productVariants).where(eq(productVariants.productId, id));
-  if (variants.length) await db.insert(productVariants).values(variants.map((variant) => ({ ...variant, productId: id })));
-  return db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
-}
-
-export async function markProductOutOfStock(id: string) {
-  await db
-    .update(productVariants)
-    .set({ stockQuantity: 0 })
-    .where(eq(productVariants.productId, id));
-  return db.select().from(productVariants).where(eq(productVariants.productId, id)).orderBy(asc(productVariants.size));
-}
-
-export async function deleteProduct(id: string) {
-  const [{ orderCount }] = await db
-    .select({ orderCount: count() })
-    .from(orderItems)
-    .where(eq(orderItems.productId, id));
-  const [product] = await db
-    .update(products)
-    .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(products.id, id), isNull(products.deletedAt)))
-    .returning();
-  return product ? { product, hasOrderHistory: Number(orderCount) > 0 } : null;
-}
-
-export async function createPendingOrder(input: {
-  userId: string;
-  productId: string;
-  productName: string;
-  variantId: string;
-  size: string;
-  sku: string;
-  quantity: number;
-  unitPrice: string;
-  shippingAmount: string;
-  address: { recipientName: string; phone: string; addressLine1: string; city: string; pincode: string };
-}) {
-  const subtotal = (Number(input.unitPrice) * input.quantity).toFixed(2);
-  const totalAmount = (Number(subtotal) + Number(input.shippingAmount)).toFixed(2);
-  const [order] = await db.insert(orders).values({
-    userId: input.userId,
-    subtotal,
-    shippingAmount: input.shippingAmount,
-    totalAmount
-  }).returning();
-  await db.insert(orderItems).values({
-    orderId: order.id,
-    productId: input.productId,
-    productName: input.productName,
-    size: input.size,
-    sku: input.sku,
-    quantity: input.quantity,
-    unitPrice: input.unitPrice
-  });
-  await db.insert(orderAddresses).values({
-    orderId: order.id,
-    recipientName: input.address.recipientName,
-    phone: input.address.phone,
-    addressLine1: input.address.addressLine1,
-    city: input.address.city,
-    pincode: input.address.pincode
-  });
-  return order;
+  const colors = await catalogDetails(id, false);
+  return { ...product, category: normalizeProductCategory(product.category) || null, colors,
+    images: colors[0]?.images ?? [], variants: colors[0]?.variants ?? [] };
 }
 
 export async function findOrderForUser(orderId: string, userId: string) {
   const [order] = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.userId, userId))).limit(1);
   return order ?? null;
-}
-
-export async function confirmOrderPayment(input: {
-  orderId: string;
-  paymentId: string;
-  amount: string;
-}) {
-  const [existingOrder] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
-  if (!existingOrder) throw new Error("Order not found");
-  if (existingOrder.status === "confirmed") return { payment: null, order: existingOrder };
-  const [existingPayment] = await db.select().from(payments).where(eq(payments.orderId, input.orderId)).limit(1);
-  if (existingPayment) {
-    const [confirmedOrder] = await db.update(orders)
-      .set({ status: "confirmed", updatedAt: new Date() })
-      .where(eq(orders.id, input.orderId))
-      .returning();
-    return { payment: existingPayment, order: confirmedOrder };
-  }
-
-  const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, input.orderId)).limit(1);
-  if (!item) throw new Error("Order items not found");
-  const [updatedVariant] = await db.update(productVariants)
-    .set({ stockQuantity: sql`${productVariants.stockQuantity} - ${item.quantity}` })
-    .where(and(
-      eq(productVariants.productId, item.productId),
-      eq(productVariants.sku, item.sku),
-      sql`${productVariants.stockQuantity} >= ${item.quantity}`
-    ))
-    .returning();
-  if (!updatedVariant) throw new Error("Insufficient stock for selected size");
-
-  const [payment] = await db.insert(payments).values({
-    orderId: input.orderId,
-    provider: "razorpay",
-    providerPaymentId: input.paymentId,
-    amount: input.amount,
-    status: "succeeded"
-  }).returning();
-  const [order] = await db.update(orders)
-    .set({ status: "confirmed", updatedAt: new Date() })
-    .where(eq(orders.id, input.orderId))
-    .returning();
-  return { payment, order };
 }
 
 export async function listUserOrders(userId: string, options: { page?: number; pageSize?: number } = {}) {
@@ -362,24 +175,8 @@ export async function findUserOrder(orderId: string, userId: string) {
     db.select().from(orderItems).where(eq(orderItems.orderId, order.id))
   ]);
   const [address] = await db.select().from(orderAddresses).where(eq(orderAddresses.orderId, order.id)).limit(1);
-  return { ...order, items, address: address ?? null };
-}
-
-export async function hasOrderItemsInStock(orderId: string) {
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-  if (!items.length) return false;
-  const availability = await Promise.all(items.map(async (item) => {
-    const [variant] = await db
-      .select({ stockQuantity: productVariants.stockQuantity })
-      .from(productVariants)
-      .where(and(
-        eq(productVariants.productId, item.productId),
-        eq(productVariants.sku, item.sku)
-      ))
-      .limit(1);
-    return variant !== undefined && variant.stockQuantity >= item.quantity;
-  }));
-  return availability.every(Boolean);
+  const reviews = await db.select({ reason: paymentReviews.reason }).from(paymentReviews).where(eq(paymentReviews.orderId, order.id));
+  return { ...order, items, reviews, address: address ?? null };
 }
 
 export async function listAllOrders() {
@@ -424,26 +221,8 @@ export async function findAdminOrder(orderId: string) {
     db.select().from(orderAddresses).where(eq(orderAddresses.orderId, order.id)).limit(1),
     db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, order.userId)).limit(1)
   ]);
-  return { ...order, items, address: address[0] ?? null, customer: user[0] ?? null };
-}
-
-export async function updateOrderStatus(orderId: string, input: {
-  status: AdminOrderStatus;
-  shippingCarrier?: string | null;
-  trackingNumber?: string | null;
-  trackingUrl?: string | null;
-}) {
-  const [order] = await db.update(orders)
-    .set({
-      status: input.status,
-      shippingCarrier: input.shippingCarrier ?? null,
-      trackingNumber: input.trackingNumber ?? null,
-      trackingUrl: input.trackingUrl ?? null,
-      updatedAt: new Date()
-    })
-    .where(eq(orders.id, orderId))
-    .returning();
-  return order ?? null;
+  const reviews = await db.select().from(paymentReviews).where(eq(paymentReviews.orderId, order.id));
+  return { ...order, items, reviews, address: address[0] ?? null, customer: user[0] ?? null };
 }
 
 export async function getAdminDashboard() {
@@ -452,7 +231,7 @@ export async function getAdminDashboard() {
     db.select({ total: count() }).from(orders),
     db.select({ total: count() }).from(products).where(isNull(products.deletedAt)),
     db.select({ total: count() }).from(users).where(and(eq(users.role, "customer"), isNull(users.deletedAt))),
-    db.select({ total: count() }).from(productVariants).where(sql`${productVariants.stockQuantity} <= 5`)
+    db.select({ total: count() }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(and(isNull(products.deletedAt), isNull(productVariants.deletedAt), sql`${availableStock} <= 5`))
   ]);
   const recentOrders = await listAdminOrders({ page: 1, pageSize: 5 });
   const topProducts = await db
