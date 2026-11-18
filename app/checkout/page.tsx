@@ -1,9 +1,11 @@
 "use client";
 
 import Script from "next/script";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 
-import { CartItem, StoreShell, useRequireAuth } from "../components/store";
+import { StoreShell, useRequireAuth } from "../components/store";
+import {useQuotedCart} from "../lib/use-cart";
+import {updateCart,subtractPurchased} from "../lib/cart";
 import { money } from "../lib/format";
 
 declare global {
@@ -22,27 +24,18 @@ declare global {
 }
 
 export default function CheckoutPage() {
-  const [item, setItem] = useState<CartItem | null>(null);
+  const {lines,ready,error:quoteError}=useQuotedCart();
+  const subtotal=lines.reduce((t,i)=>t+i.price*i.quantity,0);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
   const requireAuth = useRequireAuth();
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem("pebbles-cart-item");
-    if (stored) {
-      try {
-        setItem(JSON.parse(stored) as CartItem);
-      } catch {
-        setError("Your cart could not be loaded. Please return to the product page.");
-      }
-    }
-  }, []);
-
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = new FormData(event.currentTarget);
     if (!(await requireAuth())) return;
-    if (!item) {
-      setError("Your cart is empty.");
+    if (!ready) {
+      setError("Review current stock in your cart before paying.");
       return;
     }
     if (!window.Razorpay) {
@@ -51,24 +44,19 @@ export default function CheckoutPage() {
     }
     setProcessing(true);
     setError("");
-    const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          address: {
-            recipientName: `${String(form.get("firstName") ?? "").trim()} ${String(form.get("lastName") ?? "").trim()}`.trim(),
-            phone: String(form.get("phone") ?? "").trim(),
-            addressLine1: String(form.get("address") ?? "").trim(),
-            city: String(form.get("city") ?? "").trim(),
-            pincode: String(form.get("pincode") ?? "").trim()
-          }
-        })
-      });
+      const address={
+        recipientName:[form.get("firstName"),form.get("lastName")].join(" ").trim(),
+        phone:String(form.get("phone")).trim(),addressLine1:String(form.get("address")).trim(),
+        city:String(form.get("city")).trim(),pincode:String(form.get("pincode")).trim()
+      };
+      const items=lines.map(i=>({productId:i.productId,variantId:i.variantId,quantity:i.quantity,unitPaise:Math.round(i.price*100)}));
+      const fingerprint=JSON.stringify({items,address});
+      const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(fingerprint))),n=>n.toString(16).padStart(2,"0")).join("");
+      const sessionKey="pebbles-checkout-"+digest;
+      const checkoutKey=sessionStorage.getItem(sessionKey) || crypto.randomUUID();
+      sessionStorage.setItem(sessionKey,checkoutKey);
+      const response=await fetch("/api/create-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({checkoutKey,items,address})});
       const order = await response.json() as { order_id?: string; amount?: number; currency?: string; local_order_id?: string; error?: string };
       if (!response.ok || !order.order_id || !order.amount || !order.currency || !order.local_order_id) throw new Error(order.error ?? "Unable to start payment");
       const razorpay = new window.Razorpay({
@@ -76,9 +64,10 @@ export default function CheckoutPage() {
         amount: order.amount,
         currency: order.currency,
         name: "Pebbles",
-        description: `${item.name} · Size ${item.size}`,
+        description: lines.map(i=>i.name+" ×"+i.quantity).join(", "),
         order_id: order.order_id,
         handler: async (payment) => {
+          try {
           const verification = await fetch("/api/verify-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -90,9 +79,10 @@ export default function CheckoutPage() {
             setProcessing(false);
             return;
           }
-          window.localStorage.removeItem("pebbles-cart-item");
-          window.localStorage.removeItem("pebbles-cart-quantity");
+          updateCart(current=>subtractPurchased(current,lines));
+          sessionStorage.removeItem(sessionKey);
           window.location.href = `/orders/${result.order_id}`;
+          } catch { setError("Payment status could not be loaded. Check your orders before paying again."); setProcessing(false); }
         },
         modal: { ondismiss: () => setProcessing(false) }
       });
@@ -103,5 +93,5 @@ export default function CheckoutPage() {
     }
   };
 
-  return <><Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" /><StoreShell><div className="checkout-page"><div><p className="eyebrow">Almost yours</p><h1>Complete your <em>order.</em></h1>{error && <p className="form-error">{error}</p>}{!item ? <p className="empty-state">Your cart is empty. Add a product before checking out.</p> : <form onSubmit={submit}><h2>Delivery details</h2><div className="field-row"><label className="field"><span>First name</span><input name="firstName" required /></label><label className="field"><span>Last name</span><input name="lastName" required /></label></div><label className="field"><span>Phone</span><input name="phone" type="tel" required /></label><label className="field"><span>Address</span><input name="address" required /></label><div className="field-row"><label className="field"><span>City</span><input name="city" required /></label><label className="field"><span>Pincode</span><input name="pincode" inputMode="numeric" required /></label></div><h2>Payment method</h2><label className="payment-option"><input type="radio" defaultChecked name="payment" /> Razorpay secure checkout <span>Cards, UPI &amp; net banking</span></label><button className="button dark-button" type="submit" disabled={processing}>{processing ? "Opening payment..." : "Pay securely"} <span>↗</span></button></form>}</div>{item && <aside className="checkout-aside"><p className="eyebrow">Order summary</p><h3>{item.name}</h3><p>Size {item.size} · Quantity {item.quantity}</p><div><span>Subtotal</span><strong>{money(item.price * item.quantity)}</strong></div><div><span>Shipping</span><strong>Free</strong></div><hr /><div><span>Total</span><strong>{money(item.price * item.quantity)}</strong></div></aside>}</div></StoreShell></>;
+  return <><Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" /><StoreShell><div className="checkout-page"><div><p className="eyebrow">Almost yours</p><h1>Complete your <em>order.</em></h1>{error && <p className="form-error">{error}</p>}{quoteError && <p role="alert">{quoteError}</p>}{!lines.length ? <p className="empty-state">Your cart is empty. Add a product before checking out.</p> : <form onSubmit={submit}><h2>Delivery details</h2><div className="field-row"><label className="field"><span>First name</span><input name="firstName" required /></label><label className="field"><span>Last name</span><input name="lastName" required /></label></div><label className="field"><span>Phone</span><input name="phone" type="tel" required /></label><label className="field"><span>Address</span><input name="address" required /></label><div className="field-row"><label className="field"><span>City</span><input name="city" required /></label><label className="field"><span>Pincode</span><input name="pincode" inputMode="numeric" required /></label></div><h2>Payment method</h2><label className="payment-option"><input type="radio" defaultChecked name="payment" /> Razorpay secure checkout <span>Cards, UPI &amp; net banking</span></label><button className="button dark-button" type="submit" disabled={processing || !ready}>{processing ? "Opening payment..." : "Pay securely"} <span>↗</span></button></form>}</div>{lines.length>0 && <aside className="checkout-aside"><p className="eyebrow">Order summary</p>{lines.map(item=><section key={item.variantId}><h3>{item.name}</h3><p>{item.colorName} · {item.size} · {item.quantity} × {money(item.price)}</p></section>)}{!ready && <a href="/cart">Review availability in your cart</a>}<div><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div><span>Shipping</span><strong>Free</strong></div><hr /><div><span>Total</span><strong>{money(subtotal)}</strong></div></aside>}</div></StoreShell></>;
 }
