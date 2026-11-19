@@ -100,7 +100,7 @@ user ID.
 
 ### 5.2 `products`
 
-Stores catalog-level product information for kurtas, sarees, and tops.
+Stores catalog-level product information across all supported categories.
 
 | Column | Type | Rules | Purpose |
 |---|---|---|---|
@@ -108,14 +108,15 @@ Stores catalog-level product information for kurtas, sarees, and tops.
 | `sku` | `varchar(100)` | Required, unique | Parent product SKU |
 | `name` | `varchar(255)` | Required | Product name |
 | `description` | `text` | Required | Product description |
-| `category` | `varchar(100)` | Nullable | `kurta`, `saree`, or `top` convention |
+| `category` | `varchar(100)` | Nullable | Product category from the shared application list |
 | `price` | `numeric(12,2)` | Required | Base catalog price |
 | `created_at` | `timestamptz` | Required, default `now()` | Creation time |
 | `updated_at` | `timestamptz` | Required, default `now()` | Last update time |
 
-The category is currently a free-form string. The application uses kurtas,
-sarees, and tops as its supported product categories, but PostgreSQL does not
-enforce those values.
+The category is currently a free-form string. The application defines supported
+categories in `app/lib/product-categories.ts`, including Chikankari kurtis, but
+PostgreSQL does not enforce those values. Adding a category to that list does
+not require a database migration.
 
 ### 5.3 `product_variants`
 

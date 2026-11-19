@@ -10,12 +10,20 @@ application or deploy it to a new environment.
 The application is an Indian fashion storefront. The supported product
 taxonomy is:
 
-- Kurtas
-- Sarees
 - Tops
+- Sarees
+- Kurtis
+- 2 Pcs Kurti Set
+- 3 Pcs Kurti Set
+- Mul Chanderi
+- Mul cotton
+- Short Kurti
+- Chikankari kurtis
 
-The database stores the category as a string, so these values are application
-conventions rather than database-enforced enum values.
+The shared list in `app/lib/product-categories.ts` supplies the product forms,
+storefront filters, and admin category view. The database stores the category
+as a string, so these values are application conventions rather than
+database-enforced enum values.
 
 ## 2. System overview
 

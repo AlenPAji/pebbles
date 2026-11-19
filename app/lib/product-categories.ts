@@ -6,7 +6,8 @@ export const productCategories = [
   "3 Pcs Kurti Set",
   "Mul Chanderi",
   "Mul cotton",
-  "Short Kurti"
+  "Short Kurti",
+  "Chikankari kurtis"
 ];
 
 const categoryAliases = new Map([

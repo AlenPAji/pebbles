@@ -2,10 +2,10 @@
 
 Pebbles is a full-stack fashion storefront for browsing and purchasing
 **tops, sarees, kurtis, 2 Pcs Kurti Set, 3 Pcs Kurti Set, Mul Chanderi,
-Mul cotton, and Short Kurti**. Customers can browse products, select size and
-quantity, manage a cart, place orders, pay through Razorpay, and track their
-orders. Vendors have a protected dashboard for managing products, inventory,
-customers, and order status.
+Mul cotton, Short Kurti, and Chikankari kurtis**. Customers can browse products,
+select size and quantity, manage a cart, place orders, pay through Razorpay,
+and track their orders. Vendors have a protected dashboard for managing
+products, inventory, customers, and order status.
 
 ## Features
 
