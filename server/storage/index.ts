@@ -8,45 +8,43 @@ function environmentValue(name: string) {
   return value?.replace(/^(['"])(.*)\1$/, "$2").trim();
 }
 
-const bucket = environmentValue("S3_BUCKET_NAME");
+let storage: { client: S3Client; bucket: string; endpointHost: string } | undefined;
 
-const storageConfig = {
-  region: environmentValue("AWS_REGION"),
-  endpoint: environmentValue("AWS_ENDPOINT_URL_S3"),
-  credentials: {
-    accessKeyId: environmentValue("AWS_ACCESS_KEY_ID") ?? "",
-    secretAccessKey: environmentValue("AWS_SECRET_ACCESS_KEY") ?? ""
-  },
-  forcePathStyle: true
-};
-
-function getStorageClient() {
+function getStorage() {
+  if (storage) return storage;
+  const bucket = environmentValue("S3_BUCKET_NAME") ?? "";
+  const region = environmentValue("AWS_REGION");
+  const endpoint = environmentValue("AWS_ENDPOINT_URL_S3") ?? "";
+  const s3AccessKey = environmentValue("S3_ACCESS_KEY_ID");
+  const s3SecretKey = environmentValue("S3_SECRET_ACCESS_KEY");
+  // Select a credential pair together so keys from different accounts cannot be mixed.
+  const useS3Keys = Boolean(s3AccessKey || s3SecretKey);
+  const accessKeyId = (useS3Keys ? s3AccessKey : environmentValue("AWS_ACCESS_KEY_ID")) ?? "";
+  const secretAccessKey = (useS3Keys ? s3SecretKey : environmentValue("AWS_SECRET_ACCESS_KEY")) ?? "";
   const missingSettings = Object.entries({
     S3_BUCKET_NAME: bucket,
-    AWS_REGION: storageConfig.region,
-    AWS_ENDPOINT_URL_S3: storageConfig.endpoint,
-    AWS_ACCESS_KEY_ID: storageConfig.credentials.accessKeyId,
-    AWS_SECRET_ACCESS_KEY: storageConfig.credentials.secretAccessKey
+    AWS_REGION: region,
+    AWS_ENDPOINT_URL_S3: endpoint,
+    [useS3Keys ? "S3_ACCESS_KEY_ID" : "AWS_ACCESS_KEY_ID"]: accessKeyId,
+    [useS3Keys ? "S3_SECRET_ACCESS_KEY" : "AWS_SECRET_ACCESS_KEY"]: secretAccessKey
   }).filter(([, value]) => !value).map(([name]) => name);
   if (missingSettings.length) {
     throw new Error(`Neon Object Storage configuration is missing: ${missingSettings.join(", ")}`);
   }
 
+  let endpointHost: string;
   try {
-    new URL(storageConfig.endpoint ?? "");
+    endpointHost = new URL(endpoint).hostname;
   } catch {
     throw new Error("Neon Object Storage endpoint is not a valid URL");
   }
 
-  return new S3Client(storageConfig);
+  const client = new S3Client({ region, endpoint, credentials: { accessKeyId, secretAccessKey }, forcePathStyle: true });
+  storage = { client, bucket, endpointHost };
+  return storage;
 }
 
-function getBucket() {
-  if (!bucket) throw new Error("Neon Object Storage configuration is missing: S3_BUCKET_NAME");
-  return bucket;
-}
-
-function storageError(error: unknown) {
+function storageError(error: unknown, endpointHost: string) {
   if (!(error instanceof Error)) return new Error("Neon Object Storage request failed");
   if (error.message.startsWith("Neon Object Storage ")) return error;
   const details = error as Error & {
@@ -56,31 +54,33 @@ function storageError(error: unknown) {
   };
   const code = details.code ?? details.cause?.code ?? (details.name !== "Error" ? details.name : details.cause?.name) ?? "unknown";
   const status = details.$metadata?.httpStatusCode;
-  const endpointHost = storageConfig.endpoint ? new URL(storageConfig.endpoint).hostname : "unknown";
   return new Error(`Neon Object Storage request failed (${code}${status ? `, HTTP ${status}` : ""} at ${endpointHost})`);
 }
 
 export async function uploadProductImage(key: string, body: Buffer, contentType: string) {
+  const { client, bucket, endpointHost } = getStorage();
   try {
-    await getStorageClient().send(new PutObjectCommand({
-      Bucket: getBucket(),
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
       Key: key,
       Body: body,
       ContentType: contentType
     }));
   } catch (error) {
-    throw storageError(error);
+    throw storageError(error, endpointHost);
   }
 }
 
 export async function deleteProductImage(key: string) {
-  await getStorageClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
+  const { client, bucket } = getStorage();
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function getProductImageUrl(key: string) {
+  const { client, bucket } = getStorage();
   return getSignedUrl(
-    getStorageClient(),
-    new GetObjectCommand({ Bucket: getBucket(), Key: key }),
+    client,
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
     { expiresIn: 3600 }
   );
 }

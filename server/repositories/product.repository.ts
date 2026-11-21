@@ -9,6 +9,15 @@ import { orderAddresses, orderItems, orders, paymentReviews, productColors, prod
 import { getProductImageUrl } from "../storage";
 import { countProductCategories, normalizeProductCategory, productCategoryFilterValues } from "../../app/lib/product-categories";
 
+async function previewImageUrl(image: typeof productImages.$inferSelect) {
+  try {
+    return await getProductImageUrl(image.imageUrl);
+  } catch {
+    console.error("Unable to sign product image", image.id);
+    return null;
+  }
+}
+
 async function catalogDetails(productId: string, storefront: boolean) {
   const [colors, variants, images] = await Promise.all([
     db.select().from(productColors).where(and(eq(productColors.productId, productId), isNull(productColors.deletedAt)))
@@ -19,8 +28,8 @@ async function catalogDetails(productId: string, storefront: boolean) {
   ]);
   const gallery = await Promise.all(images.map(async image => {
     if (!storefront) return image;
-    try { return { ...image, imageUrl: await getProductImageUrl(image.imageUrl) }; }
-    catch { console.error("Unable to sign product image", image.id); return null; }
+    const imageUrl = await previewImageUrl(image);
+    return imageUrl ? { ...image, imageUrl } : null;
   }));
   return colors.map(color => ({
     ...color,
@@ -113,7 +122,7 @@ export async function listProducts(options: { page?: number; pageSize?: number; 
       const image = colors[0]?.images[0];
       return { ...product, category: normalizeProductCategory(product.category) || null, colors,
         variants: colors.flatMap(c => c.variants.map(v => ({ ...v, colorName: c.name }))),
-        primaryImageUrl: image ? await getProductImageUrl(image.imageUrl) : null };
+        primaryImageUrl: image ? await previewImageUrl(image) : null };
     })),
     total: Number(total),
     page,
