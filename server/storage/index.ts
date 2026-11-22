@@ -13,10 +13,15 @@ let storage: { client: S3Client; bucket: string; endpointHost: string } | undefi
 function getStorage() {
   if (storage) return storage;
   const bucket = environmentValue("S3_BUCKET_NAME") ?? "";
+  console.log("Neon Object Storage bucket: %s", bucket);
   const region = environmentValue("AWS_REGION");
+  console.log("Neon Object Storage region: %s", region);
   const endpoint = environmentValue("AWS_ENDPOINT_URL_S3") ?? "";
+  console.log("Neon Object Storage endpoint: %s", endpoint);
   const s3AccessKey = environmentValue("S3_ACCESS_KEY_ID");
+  console.log("Neon Object Storage access key: %s", s3AccessKey ? "set" : "not set");
   const s3SecretKey = environmentValue("S3_SECRET_ACCESS_KEY");
+  console.log("Neon Object Storage secret key: %s", s3SecretKey ? "set" : "not set");
   // Select a credential pair together so keys from different accounts cannot be mixed.
   const useS3Keys = Boolean(s3AccessKey || s3SecretKey);
   const accessKeyId = (useS3Keys ? s3AccessKey : environmentValue("AWS_ACCESS_KEY_ID")) ?? "";
