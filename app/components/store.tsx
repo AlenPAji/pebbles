@@ -207,7 +207,7 @@ export function HomePage({ products: latestProducts }: { products: Product[] }) 
     { src: "/images/carousel-image-0.png", alt: "The Chanderi Blue Collection", width: 1744, height: 608, fit: "cover" },
     { src: "/images/carousel-image-1.png", alt: "Pebbles clothing and accessories collection", width: 1744, height: 608, fit: "cover" },
     { src: "/images/carousel-image-2.png", alt: "Pebbles new collection", width: 1744, height: 608, fit: "cover" },
-    { src: "/images/Pebbles Boutique Lavender Fashion Banner.png", alt: "Pebbles Boutique lavender fashion collection", width: 2138, height: 735, fit: "contain" }
+    { src: "/images/Pebbles_Boutique_Lavender_Fashion_Banner.png", alt: "Pebbles Boutique lavender fashion collection", width: 2138, height: 735, fit: "contain" }
   ] as const;
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;

@@ -18,14 +18,16 @@ function getStorage() {
   console.log("Neon Object Storage region: %s", region);
   const endpoint = environmentValue("AWS_ENDPOINT_URL_S3") ?? "";
   console.log("Neon Object Storage endpoint: %s", endpoint);
-  const s3AccessKey = environmentValue("S3_ACCESS_KEY_ID");
-  console.log("Neon Object Storage access key: %s", s3AccessKey ? "set" : "not set");
-  const s3SecretKey = environmentValue("S3_SECRET_ACCESS_KEY");
-  console.log("Neon Object Storage secret key: %s", s3SecretKey ? "set" : "not set");
-  // Select a credential pair together so keys from different accounts cannot be mixed.
-  const useS3Keys = Boolean(s3AccessKey || s3SecretKey);
-  const accessKeyId = (useS3Keys ? s3AccessKey : environmentValue("AWS_ACCESS_KEY_ID")) ?? "";
-  const secretAccessKey = (useS3Keys ? s3SecretKey : environmentValue("AWS_SECRET_ACCESS_KEY")) ?? "";
+  const s3AccessKey = environmentValue("S3_ACCESS_KEY_ID") ?? "";
+  const s3SecretKey = environmentValue("S3_SECRET_ACCESS_KEY") ?? "";
+  const awsAccessKey = environmentValue("AWS_ACCESS_KEY_ID") ?? "";
+  const awsSecretKey = environmentValue("AWS_SECRET_ACCESS_KEY") ?? "";
+  // Prefer a complete S3-prefixed pair; otherwise use the AWS-prefixed pair.
+  const useS3Keys = Boolean(s3AccessKey && s3SecretKey);
+  const accessKeyId = useS3Keys ? s3AccessKey : awsAccessKey;
+  const secretAccessKey = useS3Keys ? s3SecretKey : awsSecretKey;
+  console.log("Neon Object Storage access key: %s", accessKeyId ? "set" : "not set");
+  console.log("Neon Object Storage secret key: %s", secretAccessKey ? "set" : "not set");
   const missingSettings = Object.entries({
     S3_BUCKET_NAME: bucket,
     AWS_REGION: region,
